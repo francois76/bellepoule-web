@@ -2,14 +2,6 @@
 
 export type Weapon = 'epee' | 'foil' | 'sabre'
 export type Gender = 'men' | 'women' | 'mixed'
-export type CompetitionLevel =
-  | 'league'
-  | 'regional'
-  | 'open'
-  | 'world_cup'
-  | 'national'
-  | 'world'
-  | 'other'
 export type StageType = 'checkin' | 'pool' | 'tableau' | 'classification' | 'barrage'
 export type StageStatus = 'pending' | 'running' | 'done'
 export type MatchResult = 'V' | 'D' | 'A' // Victory, Defeat, Absent
@@ -35,7 +27,7 @@ export interface Team {
   id: string
   name: string
   club?: string
-  fencerIds: string[]
+  fencerIds: string[] // IDs of Fencer entries in this team
 }
 
 // ─── Referee ──────────────────────────────────────────────────────────────────
@@ -44,8 +36,10 @@ export interface Referee {
   id: string
   firstName: string
   lastName: string
-  club?: string
+  licenceNumber?: string
+  club?: string   // ligue/club in cotcot
   country?: string
+  present: boolean
 }
 
 // ─── Pool phase ───────────────────────────────────────────────────────────────
@@ -160,15 +154,14 @@ export interface Contest {
   name: string
   weapon: Weapon
   gender: Gender
-  category?: string // e.g. "Senior", "Cadet", "Veteran"
-  level: CompetitionLevel
+  category?: string   // e.g. "Senior", "Cadet", "Vétéran"
   organizer?: string
   location?: string
-  date?: string // ISO date
+  date?: string       // ISO date YYYY-MM-DD
   isTeamEvent: boolean
 
   fencers: Fencer[]
-  teams: Team[]
+  teams: Team[]       // populated only when isTeamEvent = true
   referees: Referee[]
 
   stages: Stage[]

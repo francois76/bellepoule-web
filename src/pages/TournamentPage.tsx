@@ -14,21 +14,12 @@ const GENDERS = [
   { value: 'women', label: 'Dames' },
   { value: 'mixed', label: 'Mixte' },
 ]
-const LEVELS = [
-  { value: 'league', label: 'Ligue' },
-  { value: 'regional', label: 'Régional' },
-  { value: 'open', label: 'Open' },
-  { value: 'world_cup', label: 'Coupe du monde' },
-  { value: 'national', label: 'Championnat national' },
-  { value: 'world', label: 'Championnat du monde' },
-  { value: 'other', label: 'Autre' },
-]
 
 const weaponEmoji: Record<string, string> = { epee: '⚔️', foil: '🤺', sabre: '🗡️' }
 
 export default function TournamentPage() {
   const { tournamentId } = useParams<{ tournamentId: string }>()
-  const { tournaments, addContest, removeContest, addFencer, addPoolPhase } = useStore()
+  const { tournaments, addContest, removeContest, addFencer, addReferee, addTeam, addPoolPhase } = useStore()
   const navigate = useNavigate()
   const tournament = tournaments.find(t => t.id === tournamentId)
   const [creating, setCreating] = useState(false)
@@ -36,7 +27,6 @@ export default function TournamentPage() {
     name: '',
     weapon: 'epee' as Contest['weapon'],
     gender: 'men' as Contest['gender'],
-    level: 'open' as Contest['level'],
     category: '',
     organizer: '',
     location: '',
@@ -63,13 +53,20 @@ export default function TournamentPage() {
         name: partial.name ?? 'Compétition importée',
         weapon: partial.weapon ?? 'epee',
         gender: partial.gender ?? 'men',
-        level: 'other',
         organizer: partial.organizer ?? tournament?.organizer,
         location: partial.location ?? undefined,
-        isTeamEvent: false,
+        isTeamEvent: partial.isTeamEvent ?? false,
       })
       for (const f of partial.fencers ?? []) {
         await addFencer(tournamentId!, contest.id, f)
+      }
+      // Import teams (team events)
+      for (const team of (partial.teams ?? [])) {
+        await addTeam(tournamentId!, contest.id, team)
+      }
+      // Import referees (cotcot)
+      for (const ref of (partial.referees ?? [])) {
+        await addReferee(tournamentId!, contest.id, ref)
       }
       // For cotcot files, also create the declared phases
       if (file.name.endsWith('.cotcot')) {
@@ -151,12 +148,6 @@ export default function TournamentPage() {
               </select>
             </div>
             <div>
-              <label className="label">Niveau</label>
-              <select className="input" value={form.level} onChange={e => set('level', e.target.value as Contest['level'])}>
-                {LEVELS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
-              </select>
-            </div>
-            <div>
               <label className="label">Catégorie</label>
               <input className="input" value={form.category} onChange={e => set('category', e.target.value)} placeholder="Senior, Cadet, Vétéran…" />
             </div>
@@ -203,9 +194,12 @@ export default function TournamentPage() {
                   <p className="text-sm text-gray-500 mt-1">
                     {WEAPONS.find(w => w.value === c.weapon)?.label} · {GENDERS.find(g => g.value === c.gender)?.label}
                     {c.category && ` · ${c.category}`}
+                    {c.isTeamEvent && ' · Par équipes'}
                   </p>
                   <p className="text-xs text-gray-400 mt-1">
-                    {c.fencers.filter(f => f.present).length}/{c.fencers.length} tireurs présents
+                    {c.isTeamEvent
+                      ? `${c.teams.length} équipe${c.teams.length !== 1 ? 's' : ''}`
+                      : `${c.fencers.filter(f => f.present).length}/${c.fencers.length} tireurs présents`}
                   </p>
                 </div>
                 <button className="text-gray-300 hover:text-red-500 transition-colors p-1"

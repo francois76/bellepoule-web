@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
-import type { Tournament, Contest, Fencer, PoolPhase, PoolBout, TableauPhase, TableauBout, TableauSize } from '../types'
+import type { Tournament, Contest, Fencer, Referee, Team, PoolPhase, PoolBout, TableauPhase, TableauBout, TableauSize } from '../types'
 import { getAllTournaments, saveTournament, deleteTournament } from '../db'
 import { allocatePools } from '../logic/pools'
 import { buildBracket } from '../logic/tableau'
@@ -24,6 +24,16 @@ interface AppState {
   updateFencer: (tournamentId: string, contestId: string, fencer: Fencer) => Promise<void>
   removeFencer: (tournamentId: string, contestId: string, fencerId: string) => Promise<void>
   setPresence: (tournamentId: string, contestId: string, fencerId: string, present: boolean) => Promise<void>
+
+  // Referees
+  addReferee: (tournamentId: string, contestId: string, referee: Omit<Referee, 'id'>) => Promise<void>
+  removeReferee: (tournamentId: string, contestId: string, refereeId: string) => Promise<void>
+  setRefereePresence: (tournamentId: string, contestId: string, refereeId: string, present: boolean) => Promise<void>
+
+  // Teams (team events)
+  addTeam: (tournamentId: string, contestId: string, team: Omit<Team, 'id'>) => Promise<Team>
+  removeTeam: (tournamentId: string, contestId: string, teamId: string) => Promise<void>
+  addFencerToTeam: (tournamentId: string, contestId: string, teamId: string, fencerId: string) => Promise<void>
 
   // Stages
   addPoolPhase: (tournamentId: string, contestId: string, name: string, maxScore: number, promotionPercent: number) => Promise<void>
@@ -180,6 +190,77 @@ export const useStore = create<AppState>((set, get) => ({
     const updated = mutateContest(t, contestId, c => ({
       ...c,
       fencers: c.fencers.map(f => f.id === fencerId ? { ...f, present } : f),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
+  // ── Referees ───────────────────────────────────────────────────────────────
+
+  addReferee: async (tournamentId, contestId, refereeData) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const referee: Referee = { ...refereeData, id: nanoid() }
+    const updated = mutateContest(t, contestId, c => ({ ...c, referees: [...c.referees, referee] }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
+  removeReferee: async (tournamentId, contestId, refereeId) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      referees: c.referees.filter(r => r.id !== refereeId),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
+  setRefereePresence: async (tournamentId, contestId, refereeId, present) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      referees: c.referees.map(r => r.id === refereeId ? { ...r, present } : r),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
+  // ── Teams ──────────────────────────────────────────────────────────────────
+
+  addTeam: async (tournamentId, contestId, teamData) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const team: Team = { ...teamData, id: nanoid() }
+    const updated = mutateContest(t, contestId, c => ({ ...c, teams: [...c.teams, team] }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+    return team
+  },
+
+  removeTeam: async (tournamentId, contestId, teamId) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      teams: c.teams.filter(t => t.id !== teamId),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
+  addFencerToTeam: async (tournamentId, contestId, teamId, fencerId) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      teams: c.teams.map(team =>
+        team.id === teamId && !team.fencerIds.includes(fencerId)
+          ? { ...team, fencerIds: [...team.fencerIds, fencerId] }
+          : team
+      ),
     }))
     await saveTournament(updated)
     set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))

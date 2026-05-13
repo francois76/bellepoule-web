@@ -123,8 +123,9 @@ export function importFFF(text: string): Fencer[] {
  * Parse a FIE/BellePoule/cotcot XML contest file.
  * Supports root elements: CompetitionIndividuelle (cotcot), BaseCompetitionIndividuelle,
  * BaseCompetitionParEquipes (FIE XML), and Competition (internal format).
+ * For team events (BaseCompetitionParEquipes / Equipe attr), builds Team[] from Equipe grouping.
  */
-export function importBellePouleXML(xmlText: string): Partial<Contest> {
+export function importBellePouleXML(xmlText: string): Partial<Contest> & { fencers: Fencer[] } {
   const parser = new DOMParser()
   const doc = parser.parseFromString(xmlText, 'text/xml')
 
@@ -137,19 +138,21 @@ export function importBellePouleXML(xmlText: string): Partial<Contest> {
   if (!competition) throw new Error('Format XML non reconnu')
 
   const isCotcot = competition.tagName === 'CompetitionIndividuelle'
+  const isTeamEvent = competition.tagName === 'BaseCompetitionParEquipes'
 
   const fencers: Fencer[] = []
+  // For team events: map equipe name → array of fencer IDs
+  const teamMap = new Map<string, string[]>()
+
   doc.querySelectorAll('Tireur').forEach(t => {
-    // cotcot uses Ranking; FIE XML and internal format use Classement
     const rankAttr = isCotcot ? t.getAttribute('Ranking') : t.getAttribute('Classement')
-    // Statut: 'F' = forfait (absent), 'Q' = qualifié/présent
     const statut = t.getAttribute('Statut')
-    // DateNaissance may be DD.MM.YYYY (XML) — parseInt alone would give day, not year
     const dob = t.getAttribute('DateNaissance') ?? ''
     const dobParts = dob.includes('.') ? dob.split('.') : dob.includes('/') ? dob.split('/') : []
     const birthYear = dobParts.length === 3 ? parseInt(dobParts[2]) || undefined : undefined
+    const fencerId = t.getAttribute('REF') ?? t.getAttribute('ID') ?? nanoid()
     fencers.push({
-      id: t.getAttribute('REF') ?? t.getAttribute('ID') ?? nanoid(),
+      id: fencerId,
       lastName: t.getAttribute('Nom') ?? '',
       firstName: t.getAttribute('Prenom') ?? '',
       birthYear,
@@ -158,7 +161,37 @@ export function importBellePouleXML(xmlText: string): Partial<Contest> {
       country: t.getAttribute('Nation') ?? undefined,
       licenceNumber: t.getAttribute('Licence') ?? undefined,
       initialRank: rankAttr ? parseInt(rankAttr) || undefined : undefined,
-      present: statut !== 'F', // 'F' = forfait = absent
+      present: statut !== 'F',
+    })
+    // Group by Equipe attribute for team events
+    const equipe = t.getAttribute('Equipe')
+    if (equipe) {
+      const members = teamMap.get(equipe) ?? []
+      members.push(fencerId)
+      teamMap.set(equipe, members)
+    }
+  })
+
+  // Build teams from the equipe grouping
+  const teams: import('../types').Team[] = []
+  for (const [teamName, fencerIds] of teamMap.entries()) {
+    // Derive club from the first fencer's club
+    const club = fencers.find(f => fencerIds.includes(f.id))?.club
+    teams.push({ id: nanoid(), name: teamName, club, fencerIds })
+  }
+
+  // Parse referees from <Arbitres> section (cotcot only)
+  const referees: import('../types').Referee[] = []
+  doc.querySelectorAll('Arbitre').forEach(a => {
+    const statut = a.getAttribute('Statut')
+    referees.push({
+      id: a.getAttribute('ID') ?? nanoid(),
+      lastName: a.getAttribute('Nom') ?? '',
+      firstName: a.getAttribute('Prenom') ?? '',
+      licenceNumber: a.getAttribute('Licence') ?? undefined,
+      club: a.getAttribute('Ligue') ?? a.getAttribute('Club') ?? undefined,
+      country: a.getAttribute('Nation') ?? undefined,
+      present: statut !== 'F',
     })
   })
 
@@ -173,8 +206,11 @@ export function importBellePouleXML(xmlText: string): Partial<Contest> {
     gender: mapGender(competition.getAttribute('Sexe') ?? ''),
     organizer: competition.getAttribute('Organisateur') ?? undefined,
     location: competition.getAttribute('Lieu') ?? undefined,
+    isTeamEvent,
     fencers,
-  }
+    teams: teams.length > 0 ? teams : undefined,
+    referees: referees.length > 0 ? referees : undefined,
+  } as Partial<Contest> & { fencers: Fencer[] }
 }
 
 // ─── Import phase structure from cotcot ──────────────────────────────────────

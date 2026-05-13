@@ -93,9 +93,15 @@ export default function ContestPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-800">{contest.name}</h1>
           <p className="text-gray-500 text-sm mt-1">
-            {contest.fencers.length} tireur{contest.fencers.length !== 1 ? 's' : ''} inscrits
-            {' · '}{presentCount} présent{presentCount !== 1 ? 's' : ''}
+            {contest.isTeamEvent
+              ? `${contest.teams.length} équipe${contest.teams.length !== 1 ? 's' : ''}`
+              : `${contest.fencers.length} tireur${contest.fencers.length !== 1 ? 's' : ''} inscrits · ${presentCount} présent${presentCount !== 1 ? 's' : ''}`}
           </p>
+          {(contest.organizer || contest.location || contest.date) && (
+            <p className="text-xs text-gray-400 mt-1">
+              {[contest.organizer, contest.location, contest.date].filter(Boolean).join(' · ')}
+            </p>
+          )}
         </div>
         <button className="btn-secondary" onClick={() => exportTournamentJSON(tournament)}>
           💾 Exporter
