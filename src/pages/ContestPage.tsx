@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useStore } from '../store'
 import { exportTournamentJSON } from '../logic/importExport'
-import type { TableauSize } from '../types'
+import type { TableauSize, PoolPhase } from '../types'
 
 const stageLabel: Record<string, string> = {
   checkin: 'Checkin',
@@ -26,6 +26,7 @@ export default function ContestPage() {
 
   const [tableauModal, setTableauModal] = useState(false)
   const [tableauForm, setTableauForm] = useState({ size: '64', maxScore: '15', hasThirdPlace: true })
+  const [tableauAutoSize, setTableauAutoSize] = useState<number | null>(null)
 
   if (!tournament || !contest) return <div className="text-red-500">Compétition introuvable</div>
 
@@ -49,7 +50,12 @@ export default function ContestPage() {
   }
 
   function openTableauModal() {
-    setTableauForm({ size: '64', maxScore: '15', hasThirdPlace: true })
+    const lastPool = [...(contest!.stages ?? [])].reverse().find(s => s.type === 'pool') as PoolPhase | undefined
+    const qualifiedCount = lastPool?.results?.filter(r => r.status === 'qualified').length ?? 0
+    let autoSize: number = qualifiedCount > 0 ? 4 : 64
+    if (qualifiedCount > 0) { while (autoSize < qualifiedCount) autoSize *= 2 }
+    setTableauAutoSize(qualifiedCount > 0 ? autoSize : null)
+    setTableauForm({ size: String(autoSize), maxScore: '15', hasThirdPlace: true })
     setTableauModal(true)
   }
 
@@ -177,7 +183,7 @@ export default function ContestPage() {
                 <select className="input" value={tableauForm.size}
                   onChange={e => setTableauForm(f => ({ ...f, size: e.target.value }))}>
                   {TABLEAU_SIZES.map(s => (
-                    <option key={s} value={String(s)}>{s}</option>
+                    <option key={s} value={String(s)}>{s}{tableauAutoSize === s ? ' (suggéré)' : ''}</option>
                   ))}
                 </select>
               </div>

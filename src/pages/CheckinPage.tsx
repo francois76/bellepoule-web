@@ -49,7 +49,10 @@ export default function CheckinPage() {
     try {
       if (file.name.endsWith('.fff') || file.name.endsWith('.FFF')) {
         fencers = importFFF(text)
-      } else if (file.name.endsWith('.xml') || file.name.endsWith('.XML')) {
+      } else if (
+        file.name.endsWith('.xml') || file.name.endsWith('.XML') ||
+        file.name.endsWith('.cotcot')
+      ) {
         try {
           const partial = importBellePouleXML(text)
           fencers = partial.fencers ?? []

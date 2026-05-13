@@ -26,61 +26,90 @@ export function importTournamentJSON(file: File): Promise<Tournament> {
   })
 }
 
-// ─── Import XML FFF (French Fencing Federation format) ───────────────────────
+// ─── Import FFF (Engarde CSV format) ─────────────────────────────────────────
 
 /**
- * Parse a FFF XML file (Tireurs/Tireur elements) into Fencer[]
+ * Parse a FFF file (Engarde semicolon/CSV format) into Fencer[]
+ * Line format: NOM,Prenom,DD/MM/YYYY,sex,nation;team;licence,,club,rank,points;
  */
-export function importFFF(xmlText: string): Fencer[] {
-  const parser = new DOMParser()
-  const doc = parser.parseFromString(xmlText, 'text/xml')
-  const tireurs = doc.querySelectorAll('Tireur')
+export function importFFF(text: string): Fencer[] {
   const fencers: Fencer[] = []
-  tireurs.forEach(t => {
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim()
+    if (!line || line.startsWith('FFF') || /^\d{2}\/\d{2}\/\d{4}/.test(line)) continue
+    const parts = line.split(';')
+    const personal = parts[0]?.split(',')
+    if (!personal || personal.length < 4) continue
+    const [lastName, firstName, birthDate, gender, country] = personal
+    const clubFields = parts[2]?.split(',') ?? []
+    const [licenceNumber, , club, rankStr] = clubFields
+    const byStr = birthDate?.split('/')?.[2]
     fencers.push({
       id: nanoid(),
-      lastName: t.getAttribute('Nom') ?? '',
-      firstName: t.getAttribute('Prenom') ?? '',
-      birthYear: t.getAttribute('DateNaissance') ? parseInt(t.getAttribute('DateNaissance')!) : undefined,
-      gender: (t.getAttribute('Sexe') === 'F' ? 'F' : 'M') as 'M' | 'F',
-      club: t.getAttribute('Club') ?? undefined,
-      country: t.getAttribute('Nation') ?? undefined,
-      licenceNumber: t.getAttribute('Licence') ?? undefined,
-      initialRank: t.getAttribute('Classement') ? parseInt(t.getAttribute('Classement')!) : undefined,
+      lastName: lastName?.trim() ?? '',
+      firstName: firstName?.trim() ?? '',
+      birthYear: byStr ? parseInt(byStr) || undefined : undefined,
+      gender: gender?.trim() === 'F' ? 'F' : 'M',
+      club: club?.trim() || undefined,
+      country: country?.trim() || undefined,
+      licenceNumber: licenceNumber?.trim() || undefined,
+      initialRank: rankStr ? parseInt(rankStr) || undefined : undefined,
       present: true,
     })
-  })
+  }
   return fencers
 }
 
 /**
- * Parse a FIE/BellePoule XML contest file
+ * Parse a FIE/BellePoule/cotcot XML contest file.
+ * Supports root elements: CompetitionIndividuelle (cotcot), BaseCompetitionIndividuelle,
+ * BaseCompetitionParEquipes (FIE XML), and Competition (internal format).
  */
 export function importBellePouleXML(xmlText: string): Partial<Contest> {
   const parser = new DOMParser()
   const doc = parser.parseFromString(xmlText, 'text/xml')
 
-  const competition = doc.querySelector('Competition')
+  const competition =
+    doc.querySelector('CompetitionIndividuelle') ??
+    doc.querySelector('BaseCompetitionIndividuelle') ??
+    doc.querySelector('BaseCompetitionParEquipes') ??
+    doc.querySelector('Competition')
+
   if (!competition) throw new Error('Format XML non reconnu')
+
+  const isCotcot = competition.tagName === 'CompetitionIndividuelle'
 
   const fencers: Fencer[] = []
   doc.querySelectorAll('Tireur').forEach(t => {
+    // cotcot uses Ranking; FIE XML and internal format use Classement
+    const rankAttr = isCotcot ? t.getAttribute('Ranking') : t.getAttribute('Classement')
+    // Statut: 'F' = forfait (absent), 'Q' = qualifié/présent
+    const statut = t.getAttribute('Statut')
+    // DateNaissance may be DD.MM.YYYY (XML) — parseInt alone would give day, not year
+    const dob = t.getAttribute('DateNaissance') ?? ''
+    const dobParts = dob.includes('.') ? dob.split('.') : dob.includes('/') ? dob.split('/') : []
+    const birthYear = dobParts.length === 3 ? parseInt(dobParts[2]) || undefined : undefined
     fencers.push({
-      id: t.getAttribute('REF') ?? nanoid(),
+      id: t.getAttribute('REF') ?? t.getAttribute('ID') ?? nanoid(),
       lastName: t.getAttribute('Nom') ?? '',
       firstName: t.getAttribute('Prenom') ?? '',
-      birthYear: t.getAttribute('DateNaissance') ? parseInt(t.getAttribute('DateNaissance')!) : undefined,
+      birthYear,
       gender: (t.getAttribute('Sexe') === 'F' ? 'F' : 'M') as 'M' | 'F',
       club: t.getAttribute('Club') ?? undefined,
       country: t.getAttribute('Nation') ?? undefined,
       licenceNumber: t.getAttribute('Licence') ?? undefined,
-      initialRank: t.getAttribute('Classement') ? parseInt(t.getAttribute('Classement')!) : undefined,
-      present: true,
+      initialRank: rankAttr ? parseInt(rankAttr) || undefined : undefined,
+      present: statut !== 'F', // 'F' = forfait = absent
     })
   })
 
+  const name =
+    competition.getAttribute('TitreLong') ??
+    competition.getAttribute('Titre') ??
+    'Compétition'
+
   return {
-    name: competition.getAttribute('Titre') ?? 'Compétition',
+    name,
     weapon: mapWeapon(competition.getAttribute('Arme') ?? ''),
     gender: mapGender(competition.getAttribute('Sexe') ?? ''),
     organizer: competition.getAttribute('Organisateur') ?? undefined,
