@@ -235,7 +235,7 @@ export default function PoolsPage() {
 
       {/* Pool score sheets — toggle on screen, always in print */}
       {stage.pools.length > 0 && (
-        <div className={`${showSheets ? 'block' : 'hidden'} print:block`}>
+        <div className="pool-sheets-wrapper" style={showSheets ? {} : { display: 'none' }}>
           <h2 className="print:hidden font-semibold text-gray-700 mb-3">Feuilles de poule</h2>
           {stage.pools.map(p => (
             <PoolScoreSheet key={p.id} pool={p} stage={stage} fencerMap={fencerMap} contestName={contest.name} />
@@ -286,7 +286,7 @@ function PoolScoreSheet({ pool, stage, fencerMap, contestName }: {
         <h3>Poule {pool.number} — {stage.name}</h3>
         <p>{contestName}</p>
       </div>
-      <div className="overflow-x-auto">
+      <div className="pool-grid-scroll">
         <table className="pool-grid">
           <thead>
             <tr>
