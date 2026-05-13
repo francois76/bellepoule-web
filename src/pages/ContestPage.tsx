@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useStore } from '../store'
 import { exportTournamentJSON } from '../logic/importExport'
+import type { TableauSize } from '../types'
 
 const stageLabel: Record<string, string> = {
   checkin: 'Checkin',
@@ -10,6 +12,8 @@ const stageLabel: Record<string, string> = {
   barrage: 'Barrage',
 }
 
+const TABLEAU_SIZES: TableauSize[] = [4, 8, 16, 32, 64, 128]
+
 export default function ContestPage() {
   const { tournamentId, contestId } = useParams<{ tournamentId: string; contestId: string }>()
   const { tournaments, addPoolPhase, addTableauPhase, updateTournament: _ut } = useStore()
@@ -17,26 +21,49 @@ export default function ContestPage() {
   const tournament = tournaments.find(t => t.id === tournamentId)
   const contest = tournament?.contests.find(c => c.id === contestId)
 
+  const [poolModal, setPoolModal] = useState(false)
+  const [poolForm, setPoolForm] = useState({ name: '', maxScore: '5', promotionPercent: '75' })
+
+  const [tableauModal, setTableauModal] = useState(false)
+  const [tableauForm, setTableauForm] = useState({ size: '64', maxScore: '15', hasThirdPlace: true })
+
   if (!tournament || !contest) return <div className="text-red-500">Compétition introuvable</div>
 
   const presentCount = (contest?.fencers ?? []).filter(f => f.present).length
 
-  async function handleAddPools() {
-    const name = prompt('Nom du tour de poules', `Tour de poules ${contest!.stages.filter(s => s.type === 'pool').length + 1}`)
-    if (!name) return
-    const maxScore = parseInt(prompt('Score maximum par match', '5') ?? '5')
-    const pct = parseInt(prompt('Pourcentage de qualifiés (%)', '75') ?? '75')
-    await addPoolPhase(tournamentId!, contestId!, name, maxScore, pct)
+  function openPoolModal() {
+    const n = contest!.stages.filter(s => s.type === 'pool').length + 1
+    setPoolForm({ name: `Tour de poules ${n}`, maxScore: '5', promotionPercent: '75' })
+    setPoolModal(true)
   }
 
-  async function handleAddTableau() {
-    const sizeInput = prompt('Taille du tableau (ex: 32, 64, 128)', '64')
-    if (!sizeInput) return
-    const size = parseInt(sizeInput) as import('../types').TableauSize
-    if (!size) return
-    const maxScore = parseInt(prompt('Score maximum', '15') ?? '15')
-    const thirdPlace = confirm('Match pour la 3ème place ?')
-    await addTableauPhase(tournamentId!, contestId!, `Tableau de ${size}`, size, maxScore, thirdPlace)
+  async function handleCreatePool(e: React.FormEvent) {
+    e.preventDefault()
+    await addPoolPhase(
+      tournamentId!, contestId!,
+      poolForm.name.trim(),
+      parseInt(poolForm.maxScore) || 5,
+      parseInt(poolForm.promotionPercent) || 75,
+    )
+    setPoolModal(false)
+  }
+
+  function openTableauModal() {
+    setTableauForm({ size: '64', maxScore: '15', hasThirdPlace: true })
+    setTableauModal(true)
+  }
+
+  async function handleCreateTableau(e: React.FormEvent) {
+    e.preventDefault()
+    const size = parseInt(tableauForm.size) as TableauSize
+    await addTableauPhase(
+      tournamentId!, contestId!,
+      `Tableau de ${size}`,
+      size,
+      parseInt(tableauForm.maxScore) || 15,
+      tableauForm.hasThirdPlace,
+    )
+    setTableauModal(false)
   }
 
   function navigateToStage(stage: { id: string; type: string }) {
@@ -83,8 +110,8 @@ export default function ContestPage() {
           sub="Résultats finaux"
           onClick={() => navigate(`/tournament/${tournamentId}/contest/${contestId}/classification`)}
         />
-        <ActionCard icon="🤺" label="+ Tour de poules" sub="Ajouter phase" onClick={handleAddPools} />
-        <ActionCard icon="🏆" label="+ Tableau" sub="Élimination directe" onClick={handleAddTableau} />
+        <ActionCard icon="🤺" label="+ Tour de poules" sub="Ajouter phase" onClick={openPoolModal} />
+        <ActionCard icon="🏆" label="+ Tableau" sub="Élimination directe" onClick={openTableauModal} />
       </div>
 
       {/* Stages */}
@@ -105,6 +132,70 @@ export default function ContestPage() {
                 <StatusBadge status={stage.status} />
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Modal — Nouveau tour de poules */}
+      {poolModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h2 className="text-lg font-bold text-gray-800">Nouveau tour de poules</h2>
+            <form onSubmit={handleCreatePool} className="space-y-3">
+              <div>
+                <label className="label">Nom</label>
+                <input className="input" value={poolForm.name}
+                  onChange={e => setPoolForm(f => ({ ...f, name: e.target.value }))} required />
+              </div>
+              <div>
+                <label className="label">Score maximum par match</label>
+                <input className="input" type="number" min={1} max={99} value={poolForm.maxScore}
+                  onChange={e => setPoolForm(f => ({ ...f, maxScore: e.target.value }))} required />
+              </div>
+              <div>
+                <label className="label">Pourcentage de qualifiés (%)</label>
+                <input className="input" type="number" min={1} max={100} value={poolForm.promotionPercent}
+                  onChange={e => setPoolForm(f => ({ ...f, promotionPercent: e.target.value }))} required />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button type="button" className="btn-secondary flex-1" onClick={() => setPoolModal(false)}>Annuler</button>
+                <button type="submit" className="btn-primary flex-1">Créer</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal — Nouveau tableau */}
+      {tableauModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h2 className="text-lg font-bold text-gray-800">Nouveau tableau</h2>
+            <form onSubmit={handleCreateTableau} className="space-y-3">
+              <div>
+                <label className="label">Taille du tableau</label>
+                <select className="input" value={tableauForm.size}
+                  onChange={e => setTableauForm(f => ({ ...f, size: e.target.value }))}>
+                  {TABLEAU_SIZES.map(s => (
+                    <option key={s} value={String(s)}>{s}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label">Score maximum</label>
+                <input className="input" type="number" min={1} max={99} value={tableauForm.maxScore}
+                  onChange={e => setTableauForm(f => ({ ...f, maxScore: e.target.value }))} required />
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="thirdPlace" checked={tableauForm.hasThirdPlace}
+                  onChange={e => setTableauForm(f => ({ ...f, hasThirdPlace: e.target.checked }))} />
+                <label htmlFor="thirdPlace" className="text-sm text-gray-700">Match pour la 3ème place</label>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button type="button" className="btn-secondary flex-1" onClick={() => setTableauModal(false)}>Annuler</button>
+                <button type="submit" className="btn-primary flex-1">Créer</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

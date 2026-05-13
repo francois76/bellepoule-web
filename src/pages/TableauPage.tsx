@@ -46,7 +46,7 @@ export default function TableauPage() {
   return (
     <div className="space-y-5">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-gray-500 flex-wrap">
+      <div className="print:hidden flex items-center gap-2 text-sm text-gray-500 flex-wrap">
         <Link to="/" className="hover:text-blue-600">Tournois</Link>
         <span>/</span>
         <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>
@@ -56,7 +56,10 @@ export default function TableauPage() {
         <span className="text-gray-800 font-medium">{stage.name}</span>
       </div>
 
-      <h1 className="text-2xl font-bold text-gray-800">{stage.name}</h1>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h1 className="text-2xl font-bold text-gray-800">{stage.name}</h1>
+        <button className="btn-secondary print:hidden" onClick={() => window.print()}>🖨️ Imprimer</button>
+      </div>
 
       <div className="space-y-8 overflow-x-auto">
         {rounds.map(round => {
@@ -115,7 +118,7 @@ function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, sco
       <div className="border-t border-gray-200" />
       <FencerSlot name={nameB} score={bout.scoreB} isWinner={bout.winnerId === bout.fencerBId} isBye={!bout.fencerBId} />
       {isEditing ? (
-        <div className="bg-blue-50 px-3 py-2 flex gap-2 items-center border-t border-blue-200">
+        <div className="print:hidden bg-blue-50 px-3 py-2 flex gap-2 items-center border-t border-blue-200">
           <input type="number" min="0" max={maxScore} value={scoreAInput} onChange={e => onScoreAChange(e.target.value)}
             className="w-10 text-center border rounded px-1 py-0.5 text-sm" autoFocus />
           <span className="text-gray-400">—</span>
@@ -126,7 +129,7 @@ function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, sco
         </div>
       ) : (
         canEdit && (
-          <button onClick={onEdit} className="w-full text-center text-xs text-blue-500 hover:text-blue-700 py-1 border-t border-gray-100 hover:bg-blue-50 transition-colors">
+          <button onClick={onEdit} className="print:hidden w-full text-center text-xs text-blue-500 hover:text-blue-700 py-1 border-t border-gray-100 hover:bg-blue-50 transition-colors">
             Saisir le score
           </button>
         )

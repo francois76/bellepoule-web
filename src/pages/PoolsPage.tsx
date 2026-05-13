@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useStore } from '../store'
-import type { PoolPhase, PoolBout } from '../types'
+import type { PoolPhase, PoolBout, Pool, Fencer } from '../types'
 
 export default function PoolsPage() {
   const { tournamentId, contestId, stageId } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
-  const { tournaments, allocatePoolPhase, setPoolBoutScore, lockPoolPhase } = useStore()
+  const { tournaments, allocatePoolPhase, setPoolBoutScore, lockPoolPhase, unlockPoolPhase } = useStore()
   const tournament = tournaments.find(t => t.id === tournamentId)
   const contest = tournament?.contests.find(c => c.id === contestId)
   const stage = contest?.stages.find(s => s.id === stageId) as PoolPhase | undefined
@@ -14,18 +14,28 @@ export default function PoolsPage() {
   const [editingBout, setEditingBout] = useState<string | null>(null)
   const [scoreA, setScoreA] = useState('')
   const [scoreB, setScoreB] = useState('')
+  const [allocateModal, setAllocateModal] = useState(false)
+  const [poolCountInput, setPoolCountInput] = useState('')
+  const [showSheets, setShowSheets] = useState(false)
 
   if (!tournament || !contest || !stage || stage.type !== 'pool') return <div className="text-red-500">Phase introuvable</div>
 
   const fencerMap = Object.fromEntries(contest.fencers.map(f => [f.id, f]))
   const pool = stage.pools[selectedPool]
 
-  async function handleAllocate() {
-    const presentCount = contest!.fencers.filter(f => f.present).length
-    const defaultCount = Math.ceil(presentCount / 6)
-    const countStr = prompt(`Nombre de poules (${presentCount} tireurs présents)`, String(defaultCount))
-    if (!countStr) return
-    await allocatePoolPhase(tournamentId!, contestId!, stageId!, parseInt(countStr))
+  const presentCount = contest.fencers.filter(f => f.present).length
+
+  function openAllocateModal() {
+    setPoolCountInput(String(Math.ceil(presentCount / 6)))
+    setAllocateModal(true)
+  }
+
+  async function handleAllocate(e: React.FormEvent) {
+    e.preventDefault()
+    const count = parseInt(poolCountInput)
+    if (!count || count < 1) return
+    await allocatePoolPhase(tournamentId!, contestId!, stageId!, count)
+    setAllocateModal(false)
   }
 
   async function saveBout(boutId: string) {
@@ -53,7 +63,7 @@ export default function PoolsPage() {
   return (
     <div className="space-y-5">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-gray-500 flex-wrap">
+      <div className="print:hidden flex items-center gap-2 text-sm text-gray-500 flex-wrap">
         <Link to="/" className="hover:text-blue-600">Tournois</Link>
         <span>/</span>
         <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>
@@ -65,28 +75,71 @@ export default function PoolsPage() {
 
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-gray-800">{stage.name}</h1>
-        <div className="flex gap-2">
+        <div className="print:hidden flex gap-2 flex-wrap">
           {stage.status === 'pending' && (
-            <button className="btn-primary" onClick={handleAllocate}>⚙️ Allouer les poules</button>
+            <button className="btn-primary" onClick={openAllocateModal}>⚙️ Allouer les poules</button>
           )}
           {stage.status === 'running' && (
             <button className="btn-primary bg-green-600 hover:bg-green-700"
-              onClick={() => { if (confirm('Terminer ce tour de poules et calculer le classement ?')) lockPoolPhase(tournamentId!, contestId!, stageId!) }}>
+              onClick={() => lockPoolPhase(tournamentId!, contestId!, stageId!)}>
               ✅ Terminer le tour
+            </button>
+          )}
+          {stage.pools.length > 0 && (
+            <>
+              <button className="btn-secondary" onClick={() => setShowSheets(s => !s)}>
+                📋 {showSheets ? 'Masquer feuilles' : 'Feuilles de poule'}
+              </button>
+              <button className="btn-secondary" onClick={() => window.print()}>
+                🖨️ Imprimer
+              </button>
+            </>
+          )}
+          {stage.status === 'done' && (
+            <button className="btn-secondary" onClick={() => unlockPoolPhase(tournamentId!, contestId!, stageId!)}>
+              🔓 Rouvrir pour correction
             </button>
           )}
         </div>
       </div>
 
+      {/* Modal — Allocation des poules */}
+      {allocateModal && (
+        <div className="print:hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h2 className="text-lg font-bold text-gray-800">Allouer les poules</h2>
+            <p className="text-sm text-gray-500">{presentCount} tireurs présents</p>
+            <form onSubmit={handleAllocate} className="space-y-3">
+              <div>
+                <label className="label">Nombre de poules</label>
+                <input className="input" type="number" min={1} max={presentCount}
+                  value={poolCountInput}
+                  onChange={e => setPoolCountInput(e.target.value)}
+                  required autoFocus />
+                {poolCountInput && parseInt(poolCountInput) > 0 && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    ~{Math.ceil(presentCount / parseInt(poolCountInput))} tireurs par poule
+                  </p>
+                )}
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button type="button" className="btn-secondary flex-1" onClick={() => setAllocateModal(false)}>Annuler</button>
+                <button type="submit" className="btn-primary flex-1">Allouer</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {stage.pools.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">
+        <div className="print:hidden text-center py-12 text-gray-400">
           <p className="text-4xl mb-3">🤺</p>
           <p>Cliquez sur "Allouer les poules" pour distribuer les tireurs</p>
         </div>
       ) : (
         <>
-          {/* Pool selector */}
-          <div className="flex gap-2 flex-wrap">
+          {/* Pool selector tabs - screen only */}
+          <div className="print:hidden flex gap-2 flex-wrap">
             {stage.pools.map((p, idx) => (
               <button key={p.id}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${idx === selectedPool ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300'}`}
@@ -96,8 +149,9 @@ export default function PoolsPage() {
             ))}
           </div>
 
+          {/* Bout scoring - screen only */}
           {pool && (
-            <div className="grid gap-5 lg:grid-cols-2">
+            <div className="print:hidden grid gap-5 lg:grid-cols-2">
               {/* Pool composition */}
               <div className="card">
                 <h2 className="font-semibold text-gray-700 mb-3">Poule {pool.number} — Tireurs</h2>
@@ -178,6 +232,101 @@ export default function PoolsPage() {
           </table>
         </div>
       )}
+
+      {/* Pool score sheets — toggle on screen, always in print */}
+      {stage.pools.length > 0 && (
+        <div className={`${showSheets ? 'block' : 'hidden'} print:block`}>
+          <h2 className="print:hidden font-semibold text-gray-700 mb-3">Feuilles de poule</h2>
+          {stage.pools.map(p => (
+            <PoolScoreSheet key={p.id} pool={p} stage={stage} fencerMap={fencerMap} contestName={contest.name} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PoolScoreSheet({ pool, stage, fencerMap, contestName }: {
+  pool: Pool
+  stage: PoolPhase
+  fencerMap: Record<string, Fencer>
+  contestName: string
+}) {
+  const fencers = pool.fencerIds.map((id, idx) => {
+    const f = fencerMap[id]
+    return {
+      id,
+      num: idx + 1,
+      name: f ? `${f.lastName.toUpperCase()} ${f.firstName}` : '?',
+      club: f?.club ?? '',
+    }
+  })
+
+  const resultsMap = Object.fromEntries(
+    stage.results
+      .filter(r => pool.fencerIds.includes(r.fencerId))
+      .map(r => [r.fencerId, r])
+  )
+
+  function getCellContent(rowId: string, colId: string): string {
+    const bout = pool.bouts.find(b =>
+      (b.fencerAId === rowId && b.fencerBId === colId) ||
+      (b.fencerBId === rowId && b.fencerAId === colId)
+    )
+    if (!bout || bout.scoreA === undefined) return ''
+    if (bout.fencerAId === rowId) {
+      return `${bout.resultA === 'V' ? 'V' : 'D'}${bout.scoreA}`
+    }
+    return `${bout.resultB === 'V' ? 'V' : 'D'}${bout.scoreB}`
+  }
+
+  return (
+    <div className="pool-sheet">
+      <div className="pool-sheet-title">
+        <h3>Poule {pool.number} — {stage.name}</h3>
+        <p>{contestName}</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="pool-grid">
+          <thead>
+            <tr>
+              <th>N°</th>
+              <th className="pg-name">Nom</th>
+              {fencers.map(f => <th key={f.id}>{f.num}</th>)}
+              <th>V</th>
+              <th>M</th>
+              <th>TD</th>
+              <th>TR</th>
+              <th>Ind.</th>
+              <th>Rang</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fencers.map((rowF, rowIdx) => {
+              const result = resultsMap[rowF.id]
+              return (
+                <tr key={rowF.id}>
+                  <td>{rowF.num}</td>
+                  <td className="pg-name" style={{ textAlign: 'left' }}>
+                    {rowF.name}{rowF.club ? ` (${rowF.club})` : ''}
+                  </td>
+                  {fencers.map((colF, colIdx) => (
+                    rowIdx === colIdx
+                      ? <td key={colF.id} className="pg-x">&nbsp;</td>
+                      : <td key={colF.id}>{getCellContent(rowF.id, colF.id)}</td>
+                  ))}
+                  <td>{result?.victories ?? ''}</td>
+                  <td>{result?.bouts ?? ''}</td>
+                  <td>{result?.touchesScored ?? ''}</td>
+                  <td>{result?.touchesReceived ?? ''}</td>
+                  <td>{result ? (result.index >= 0 ? `+${result.index}` : String(result.index)) : ''}</td>
+                  <td>{result?.rank ?? ''}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

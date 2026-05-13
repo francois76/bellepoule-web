@@ -30,6 +30,7 @@ interface AppState {
   allocatePoolPhase: (tournamentId: string, contestId: string, stageId: string, poolCount: number) => Promise<void>
   setPoolBoutScore: (tournamentId: string, contestId: string, stageId: string, poolId: string, boutId: string, scoreA: number, scoreB: number) => Promise<void>
   lockPoolPhase: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
+  unlockPoolPhase: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
 
   addTableauPhase: (tournamentId: string, contestId: string, name: string, size: TableauSize, maxScore: number, hasThirdPlace: boolean) => Promise<void>
   setTableauBoutScore: (tournamentId: string, contestId: string, stageId: string, boutId: string, scoreA: number, scoreB: number) => Promise<void>
@@ -260,6 +261,25 @@ export const useStore = create<AppState>((set, get) => ({
         ? { ...s, status: 'done' as const, results }
         : s),
     }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
+  unlockPoolPhase: async (tournamentId, contestId, stageId) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const updated = mutateContest(t, contestId, c => {
+      const stageIdx = c.stages.findIndex(s => s.id === stageId)
+      return {
+        ...c,
+        // Remove all stages that came after this one (they're based on now-invalid results)
+        stages: c.stages
+          .slice(0, stageIdx + 1)
+          .map(s => s.id === stageId && s.type === 'pool'
+            ? { ...s, status: 'running' as const }
+            : s),
+      }
+    })
     await saveTournament(updated)
     set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
   },

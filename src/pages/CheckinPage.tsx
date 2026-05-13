@@ -4,6 +4,10 @@ import { useStore } from '../store'
 import { importFFF, importBellePouleXML } from '../logic/importExport'
 import type { Fencer } from '../types'
 
+const DEV_LAST_NAMES = ['Martin','Bernard','Dubois','Thomas','Robert','Richard','Petit','Durand','Leroy','Moreau','Simon','Laurent','Lefebvre','Michel','Garcia','David','Bertrand','Roux','Vincent','Fournier','Morel','Girard','Andre','Lefevre','Mercier','Dupont','Lambert','Bonnet','François','Martinez']
+const DEV_FIRST_NAMES = ['Hugo','Lucas','Léo','Louis','Gabriel','Noah','Raphaël','Arthur','Ethan','Alexandre','Léa','Emma','Chloé','Manon','Inès','Alice','Camille','Julie','Lucie','Anaïs']
+const DEV_CLUBS = ['CSM Clamart','Châlons','Rodez','Paris UC','Grenoble Escrime','Bordeaux EC','Toulouse Escrime','Lyon AE','Nantes EC','Rennes EA']
+
 export default function CheckinPage() {
   const { tournamentId, contestId } = useParams<{ tournamentId: string; contestId: string }>()
   const { tournaments, addFencer, removeFencer, setPresence } = useStore()
@@ -12,6 +16,7 @@ export default function CheckinPage() {
   const [filter, setFilter] = useState('')
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ lastName: '', firstName: '', gender: 'M' as 'M' | 'F', club: '', birthYear: '', initialRank: '' })
+  const [devCount, setDevCount] = useState('12')
 
   if (!tournament || !contest) return <div className="text-red-500">Compétition introuvable</div>
 
@@ -65,6 +70,24 @@ export default function CheckinPage() {
     contest!.fencers.forEach(f => setPresence(tournamentId!, contestId!, f.id, present))
   }
 
+  async function handleInjectFakers() {
+    const n = parseInt(devCount) || 12
+    const existing = contest!.fencers.length
+    for (let i = 0; i < n; i++) {
+      const rank = existing + i + 1
+      const fencer: Omit<Fencer, 'id'> = {
+        lastName: DEV_LAST_NAMES[(rank * 7) % DEV_LAST_NAMES.length],
+        firstName: DEV_FIRST_NAMES[(rank * 3) % DEV_FIRST_NAMES.length],
+        gender: rank % 3 === 0 ? 'F' : 'M',
+        club: DEV_CLUBS[rank % DEV_CLUBS.length],
+        birthYear: 1990 + (rank % 35),
+        initialRank: rank,
+        present: true,
+      }
+      await addFencer(tournamentId!, contestId!, fencer)
+    }
+  }
+
   return (
     <div className="space-y-5">
       {/* Breadcrumb */}
@@ -93,6 +116,17 @@ export default function CheckinPage() {
           <input type="file" accept=".fff,.FFF,.xml,.XML" className="hidden" onChange={handleImportFile} />
         </label>
         <button className="btn-primary text-sm" onClick={() => setAdding(true)}>+ Ajouter tireur</button>
+        {import.meta.env.DEV && (
+          <div className="flex items-center gap-1 border border-orange-300 rounded-lg px-2 py-1 bg-orange-50" title="Dev only">
+            <span className="text-xs text-orange-600 font-medium">DEV</span>
+            <input type="number" min={1} max={200} value={devCount}
+              onChange={e => setDevCount(e.target.value)}
+              className="w-12 text-center border border-orange-300 rounded text-sm px-1 py-0.5 bg-white" />
+            <button className="text-xs text-orange-700 font-medium hover:text-orange-900 whitespace-nowrap" onClick={handleInjectFakers}>
+              Inject tireurs
+            </button>
+          </div>
+        )}
       </div>
 
       {adding && (

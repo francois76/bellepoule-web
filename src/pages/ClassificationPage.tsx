@@ -57,7 +57,7 @@ export default function ClassificationPage() {
   return (
     <div className="space-y-5">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-gray-500 flex-wrap">
+      <div className="print:hidden flex items-center gap-2 text-sm text-gray-500 flex-wrap">
         <Link to="/" className="hover:text-blue-600">Tournois</Link>
         <span>/</span>
         <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>
@@ -79,8 +79,8 @@ export default function ClassificationPage() {
               <th className="px-4 py-3 text-left w-16">Rang</th>
               <th className="px-4 py-3 text-left">Nom</th>
               <th className="px-4 py-3 text-left">Prénom</th>
-              <th className="px-4 py-3 text-left hidden sm:table-cell">Club</th>
-              <th className="px-4 py-3 text-left hidden md:table-cell">Nation</th>
+              <th className="px-4 py-3 text-left hidden sm:table-cell print:table-cell">Club</th>
+              <th className="px-4 py-3 text-left hidden md:table-cell print:table-cell">Nation</th>
             </tr>
           </thead>
           <tbody>
@@ -96,8 +96,8 @@ export default function ClassificationPage() {
                   </td>
                   <td className="px-4 py-2 font-medium text-gray-800">{f?.lastName.toUpperCase() ?? '?'}</td>
                   <td className="px-4 py-2 text-gray-700">{f?.firstName ?? ''}</td>
-                  <td className="px-4 py-2 text-gray-500 hidden sm:table-cell">{f?.club ?? '—'}</td>
-                  <td className="px-4 py-2 text-gray-500 hidden md:table-cell">{f?.country ?? '—'}</td>
+                  <td className="px-4 py-2 text-gray-500 hidden sm:table-cell print:table-cell">{f?.club ?? '—'}</td>
+                  <td className="px-4 py-2 text-gray-500 hidden md:table-cell print:table-cell">{f?.country ?? '—'}</td>
                 </tr>
               )
             })}
