@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useStore } from '../store'
+import { importBellePouleXML, importFFF, importCotcotPhases, readFileText } from '../logic/importExport'
 import type { Contest } from '../types'
 
 const WEAPONS = [
@@ -27,7 +28,7 @@ const weaponEmoji: Record<string, string> = { epee: '⚔️', foil: '🤺', sabr
 
 export default function TournamentPage() {
   const { tournamentId } = useParams<{ tournamentId: string }>()
-  const { tournaments, addContest, removeContest } = useStore()
+  const { tournaments, addContest, removeContest, addFencer, addPoolPhase } = useStore()
   const navigate = useNavigate()
   const tournament = tournaments.find(t => t.id === tournamentId)
   const [creating, setCreating] = useState(false)
@@ -44,6 +45,49 @@ export default function TournamentPage() {
   })
 
   if (!tournament) return <div className="text-red-500">Tournoi introuvable</div>
+
+  async function handleImportContest(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    try {
+      const text = await readFileText(file)
+      let partial
+      if (file.name.endsWith('.fff') || file.name.endsWith('.FFF')) {
+        const fencers = importFFF(text)
+        partial = { name: file.name.replace(/\.fff$/i, ''), fencers, weapon: 'epee' as const, gender: 'men' as const }
+      } else {
+        partial = importBellePouleXML(text)
+      }
+      const contest = await addContest(tournamentId!, {
+        name: partial.name ?? 'Compétition importée',
+        weapon: partial.weapon ?? 'epee',
+        gender: partial.gender ?? 'men',
+        level: 'other',
+        organizer: partial.organizer ?? tournament?.organizer,
+        location: partial.location ?? undefined,
+        isTeamEvent: false,
+      })
+      for (const f of partial.fencers ?? []) {
+        await addFencer(tournamentId!, contest.id, f)
+      }
+      // For cotcot files, also create the declared phases
+      if (file.name.endsWith('.cotcot')) {
+        const phaseConfigs = importCotcotPhases(text)
+        let poolCount = 0
+        for (const cfg of phaseConfigs) {
+          if (cfg.type === 'pool') {
+            poolCount++
+            await addPoolPhase(tournamentId!, contest.id, `Tour de poules ${poolCount}`, cfg.maxScore, cfg.promotionPercent ?? 75)
+          }
+          // Tableau phases are not added here — size depends on pool results, will be auto-suggested later
+        }
+      }
+      navigate(`/tournament/${tournamentId}/contest/${contest.id}`)
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erreur import fichier')
+    }
+  }
 
   function set<K extends keyof typeof form>(k: K, v: typeof form[K]) {
     setForm(f => ({ ...f, [k]: v }))
@@ -77,7 +121,13 @@ export default function TournamentPage() {
           <h1 className="text-2xl font-bold text-gray-800">{tournament.name}</h1>
           {tournament.organizer && <p className="text-gray-500">{tournament.organizer}</p>}
         </div>
-        <button className="btn-primary" onClick={() => setCreating(true)}>+ Nouvelle compétition</button>
+        <div className="flex gap-2">
+          <label className="btn-secondary cursor-pointer">
+            📂 Importer compétition
+            <input type="file" accept=".cotcot,.xml,.XML,.fff,.FFF" className="hidden" onChange={handleImportContest} />
+          </label>
+          <button className="btn-primary" onClick={() => setCreating(true)}>+ Nouvelle compétition</button>
+        </div>
       </div>
 
       {creating && (

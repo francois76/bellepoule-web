@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useStore } from '../store'
-import { importFFF, importBellePouleXML } from '../logic/importExport'
+import { importFFF, importBellePouleXML, readFileText } from '../logic/importExport'
 import type { Fencer } from '../types'
 
 const DEV_LAST_NAMES = ['Martin','Bernard','Dubois','Thomas','Robert','Richard','Petit','Durand','Leroy','Moreau','Simon','Laurent','Lefebvre','Michel','Garcia','David','Bertrand','Roux','Vincent','Fournier','Morel','Girard','Andre','Lefevre','Mercier','Dupont','Lambert','Bonnet','François','Martinez']
@@ -44,7 +44,7 @@ export default function CheckinPage() {
   async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    const text = await file.text()
+    const text = await readFileText(file)
     let fencers: Omit<Fencer, 'id'>[] = []
     try {
       if (file.name.endsWith('.fff') || file.name.endsWith('.FFF')) {
@@ -115,8 +115,8 @@ export default function CheckinPage() {
         <button className="btn-secondary text-sm" onClick={() => handleSetAll(true)}>Tous présents</button>
         <button className="btn-secondary text-sm" onClick={() => handleSetAll(false)}>Tous absents</button>
         <label className="btn-secondary cursor-pointer text-sm">
-          📂 Importer FFF/XML
-          <input type="file" accept=".fff,.FFF,.xml,.XML" className="hidden" onChange={handleImportFile} />
+          📂 Importer FFF/XML/cotcot
+          <input type="file" accept=".fff,.FFF,.xml,.XML,.cotcot" className="hidden" onChange={handleImportFile} />
         </label>
         <button className="btn-primary text-sm" onClick={() => setAdding(true)}>+ Ajouter tireur</button>
         {import.meta.env.DEV && (

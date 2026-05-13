@@ -1,6 +1,44 @@
 import { nanoid } from 'nanoid'
 import type { Contest, Fencer, Tournament } from '../types'
 
+// ─── File reading helper ───────────────────────────────────────────────────────
+
+/**
+ * Read a File into text, detecting encoding from the content.
+ * - XML files: reads the <?xml encoding="..."> declaration
+ * - FFF files: reads the FFF;UTF8 / FFF;WIN header line
+ * Falls back to UTF-8 for unknown cases.
+ */
+export async function readFileText(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+
+  // Peek at the first 200 bytes as Latin-1 to find encoding hints
+  const peek = new TextDecoder('latin1').decode(bytes.slice(0, 200))
+
+  let encoding = 'utf-8'
+
+  // XML encoding declaration: <?xml ... encoding="ISO-8859-1" ?>
+  const xmlEnc = peek.match(/encoding=["']([^"']+)["']/i)
+  if (xmlEnc) {
+    encoding = xmlEnc[1].toLowerCase()
+  }
+
+  // FFF first line: FFF;WIN;... (Windows-1252) or FFF;UTF8;...
+  const fffHeader = peek.split(/[\r\n]/)[0]
+  if (fffHeader.startsWith('FFF;')) {
+    const codec = fffHeader.split(';')[1]?.toUpperCase()
+    if (codec === 'WIN') encoding = 'windows-1252'
+    else if (codec === 'UTF8') encoding = 'utf-8'
+  }
+
+  try {
+    return new TextDecoder(encoding).decode(bytes)
+  } catch {
+    return new TextDecoder('utf-8').decode(bytes)
+  }
+}
+
 // ─── Export JSON ──────────────────────────────────────────────────────────────
 
 export function exportTournamentJSON(tournament: Tournament): void {
@@ -30,12 +68,33 @@ export function importTournamentJSON(file: File): Promise<Tournament> {
 
 /**
  * Parse a FFF file (Engarde semicolon/CSV format) into Fencer[]
- * Line format: NOM,Prenom,DD/MM/YYYY,sex,nation;team;licence,,club,rank,points;
+ * Line format: NOM,Prenom,DD/MM/YYYY,sex,nation;ligue_or_empty;licence,ligue,club,rank,points;
+ * Gender: 'H' or 'M' = male, 'F' or 'D' = female
+ * Note: some files wrap long lines — join continuation lines first.
  */
 export function importFFF(text: string): Fencer[] {
+  // Rejoin lines that are continuations (don't start with a letter after a name field)
+  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  // Merge wrapped lines: a continuation line has no ';' in the personal fields area
+  // Strategy: join any line that doesn't look like a standalone record or header
+  const lines: string[] = []
+  for (const rawLine of normalized.split('\n')) {
+    const line = rawLine.trimEnd()
+    if (!line) continue
+    if (
+      line.startsWith('FFF') ||
+      /^\d{2}\/\d{2}\/\d{4}/.test(line) ||
+      /^[A-ZÀÂÄÉÈÊËÎÏÔÙÛÜ\- ]+,/.test(line) // starts with uppercase name
+    ) {
+      lines.push(line)
+    } else if (lines.length > 0) {
+      // continuation of previous line
+      lines[lines.length - 1] += line
+    }
+  }
+
   const fencers: Fencer[] = []
-  for (const rawLine of text.split('\n')) {
-    const line = rawLine.trim()
+  for (const line of lines) {
     if (!line || line.startsWith('FFF') || /^\d{2}\/\d{2}\/\d{4}/.test(line)) continue
     const parts = line.split(';')
     const personal = parts[0]?.split(',')
@@ -43,13 +102,13 @@ export function importFFF(text: string): Fencer[] {
     const [lastName, firstName, birthDate, gender, country] = personal
     const clubFields = parts[2]?.split(',') ?? []
     const [licenceNumber, , club, rankStr] = clubFields
-    const byStr = birthDate?.split('/')?.[2]
+    const byStr = birthDate?.trim().split('/')?.[2]
     fencers.push({
       id: nanoid(),
       lastName: lastName?.trim() ?? '',
       firstName: firstName?.trim() ?? '',
-      birthYear: byStr ? parseInt(byStr) || undefined : undefined,
-      gender: gender?.trim() === 'F' ? 'F' : 'M',
+      birthYear: byStr && byStr.length === 4 ? parseInt(byStr) || undefined : undefined,
+      gender: (gender?.trim() === 'F' || gender?.trim() === 'D') ? 'F' : 'M',
       club: club?.trim() || undefined,
       country: country?.trim() || undefined,
       licenceNumber: licenceNumber?.trim() || undefined,
@@ -116,6 +175,38 @@ export function importBellePouleXML(xmlText: string): Partial<Contest> {
     location: competition.getAttribute('Lieu') ?? undefined,
     fencers,
   }
+}
+
+// ─── Import phase structure from cotcot ──────────────────────────────────────
+
+export interface ImportedPhaseConfig {
+  type: 'pool' | 'tableau'
+  maxScore: number
+  promotionPercent?: number // pool only
+}
+
+/**
+ * Parse the <Phases> section of a cotcot XML to extract pool/tableau config.
+ * Returns an ordered list of phase definitions (pools then tableau).
+ */
+export function importCotcotPhases(xmlText: string): ImportedPhaseConfig[] {
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(xmlText, 'text/xml')
+  const phases: ImportedPhaseConfig[] = []
+  doc.querySelectorAll('TourDePoules').forEach(el => {
+    phases.push({
+      type: 'pool',
+      maxScore: parseInt(el.getAttribute('ScoreMax') ?? '5') || 5,
+      promotionPercent: 75,
+    })
+  })
+  doc.querySelectorAll('PhaseDeTableaux').forEach(el => {
+    phases.push({
+      type: 'tableau',
+      maxScore: parseInt(el.getAttribute('ScoreMax') ?? '15') || 15,
+    })
+  })
+  return phases
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
