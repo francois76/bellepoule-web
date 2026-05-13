@@ -31,9 +31,11 @@ interface AppState {
   setPoolBoutScore: (tournamentId: string, contestId: string, stageId: string, poolId: string, boutId: string, scoreA: number, scoreB: number) => Promise<void>
   lockPoolPhase: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
   unlockPoolPhase: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
+  fillRandomPoolBouts: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
 
   addTableauPhase: (tournamentId: string, contestId: string, name: string, size: TableauSize, maxScore: number, hasThirdPlace: boolean) => Promise<void>
   setTableauBoutScore: (tournamentId: string, contestId: string, stageId: string, boutId: string, scoreA: number, scoreB: number) => Promise<void>
+  fillRandomTableauBouts: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -319,6 +321,66 @@ export const useStore = create<AppState>((set, get) => ({
       ...c,
       stages: c.stages.map(s => s.id === stageId
         ? { ...s, bouts: updatedBouts } as TableauPhase
+        : s),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
+  fillRandomPoolBouts: async (tournamentId, contestId, stageId) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const contest = getContestOrThrow(t, contestId)
+    const phase = contest.stages.find(s => s.id === stageId) as PoolPhase | undefined
+    if (!phase || phase.type !== 'pool') return
+    const maxScore = phase.maxScore
+    const updatedPools = phase.pools.map(pool => ({
+      ...pool,
+      bouts: pool.bouts.map(bout => {
+        // Random: winner gets maxScore, loser gets 0..maxScore-1
+        const aWins = Math.random() < 0.5
+        const loserScore = Math.floor(Math.random() * maxScore)
+        const sa = aWins ? maxScore : loserScore
+        const sb = aWins ? loserScore : maxScore
+        const resultA: PoolBout['resultA'] = aWins ? 'V' : 'D'
+        const resultB: PoolBout['resultB'] = aWins ? 'D' : 'V'
+        return { ...bout, scoreA: sa, scoreB: sb, resultA, resultB }
+      }),
+    }))
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      stages: c.stages.map(s => s.id === stageId && s.type === 'pool'
+        ? { ...s, pools: updatedPools } as PoolPhase
+        : s),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
+  fillRandomTableauBouts: async (tournamentId, contestId, stageId) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const contest = getContestOrThrow(t, contestId)
+    const phase = contest.stages.find(s => s.id === stageId) as TableauPhase | undefined
+    if (!phase || phase.type !== 'tableau') return
+    const maxScore = phase.maxScore
+    // Process rounds in order from largest (first round) to smallest (final)
+    const rounds = Array.from(new Set(phase.bouts.map(b => b.round))).sort((a, b) => b - a)
+    let bouts = [...phase.bouts]
+    for (const round of rounds) {
+      const roundBouts = bouts.filter(b => b.round === round && b.fencerAId && b.fencerBId && !b.winnerId)
+      for (const bout of roundBouts) {
+        const aWins = Math.random() < 0.5
+        const loserScore = Math.floor(Math.random() * maxScore)
+        const sa = aWins ? maxScore : loserScore
+        const sb = aWins ? loserScore : maxScore
+        bouts = advanceBracket(bouts, bout.id, sa, sb, maxScore)
+      }
+    }
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      stages: c.stages.map(s => s.id === stageId && s.type === 'tableau'
+        ? { ...s, bouts } as TableauPhase
         : s),
     }))
     await saveTournament(updated)

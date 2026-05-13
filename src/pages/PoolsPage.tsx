@@ -5,7 +5,7 @@ import type { PoolPhase, PoolBout, Pool, Fencer } from '../types'
 
 export default function PoolsPage() {
   const { tournamentId, contestId, stageId } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
-  const { tournaments, allocatePoolPhase, setPoolBoutScore, lockPoolPhase, unlockPoolPhase } = useStore()
+  const { tournaments, allocatePoolPhase, setPoolBoutScore, lockPoolPhase, unlockPoolPhase, fillRandomPoolBouts } = useStore()
   const tournament = tournaments.find(t => t.id === tournamentId)
   const contest = tournament?.contests.find(c => c.id === contestId)
   const stage = contest?.stages.find(s => s.id === stageId) as PoolPhase | undefined
@@ -39,9 +39,13 @@ export default function PoolsPage() {
   }
 
   async function saveBout(boutId: string) {
+    if (!stage) return
     const sa = parseInt(scoreA)
     const sb = parseInt(scoreB)
     if (isNaN(sa) || isNaN(sb)) return
+    if (sa > stage.maxScore || sb > stage.maxScore) return
+    if (sa === sb) return
+    if (sa !== stage.maxScore && sb !== stage.maxScore) return
     await setPoolBoutScore(tournamentId!, contestId!, stageId!, pool.id, boutId, sa, sb)
     setEditingBout(null)
     setScoreA('')
@@ -74,7 +78,14 @@ export default function PoolsPage() {
       </div>
 
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-bold text-gray-800">{stage.name}</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">{stage.name}</h1>
+          <div className="flex gap-3 mt-1 text-xs text-gray-500">
+            <span>Score max : <strong className="text-gray-700">{stage.maxScore}</strong></span>
+            <span>Qualification : <strong className="text-gray-700">{stage.promotionPercent} %</strong></span>
+            {stage.pools.length > 0 && <span>{stage.pools.length} poule{stage.pools.length > 1 ? 's' : ''}</span>}
+          </div>
+        </div>
         <div className="print:hidden flex gap-2 flex-wrap">
           {stage.status === 'pending' && (
             <button className="btn-primary" onClick={openAllocateModal}>⚙️ Allouer les poules</button>
@@ -83,6 +94,12 @@ export default function PoolsPage() {
             <button className="btn-primary bg-green-600 hover:bg-green-700"
               onClick={() => lockPoolPhase(tournamentId!, contestId!, stageId!)}>
               ✅ Terminer le tour
+            </button>
+          )}
+          {stage.pools.length > 0 && stage.status === 'running' && import.meta.env.DEV && (
+            <button className="btn-secondary border-orange-300 text-orange-700 hover:bg-orange-50"
+              onClick={() => fillRandomPoolBouts(tournamentId!, contestId!, stageId!)}>
+              🎲 Scores aléatoires
             </button>
           )}
           {stage.pools.length > 0 && (
@@ -348,23 +365,40 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
 }) {
   const scored = bout.scoreA !== undefined && bout.scoreB !== undefined
 
+  const inputError = (() => {
+    if (!isEditing) return null
+    const sa = parseInt(scoreAInput)
+    const sb = parseInt(scoreBInput)
+    if (isNaN(sa) || isNaN(sb)) return null
+    if (sa < 0 || sb < 0) return 'Score négatif impossible'
+    if (sa > maxScore || sb > maxScore) return `Score max\u00a0: ${maxScore}`
+    if (sa === sb) return 'Égalité impossible en poule'
+    if (sa !== maxScore && sb !== maxScore) return `Un des scores doit être ${maxScore}\u00a0(V)`
+    return null
+  })()
+
   return (
     <div className={`rounded-lg border p-2 ${scored ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-200'} ${bout.resultA === 'A' ? 'opacity-50' : ''}`}>
       <div className="text-xs text-gray-400 mb-1">Match {bout.order}</div>
       {isEditing ? (
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium flex-1 text-right">{nameA}</span>
-          <input type="number" min="0" max={maxScore} value={scoreAInput}
-            onChange={e => onScoreAChange(e.target.value)}
-            className="w-12 text-center border rounded px-1 py-0.5 text-sm"
-            autoFocus />
-          <span className="text-gray-400 font-bold">—</span>
-          <input type="number" min="0" max={maxScore} value={scoreBInput}
-            onChange={e => onScoreBChange(e.target.value)}
-            className="w-12 text-center border rounded px-1 py-0.5 text-sm" />
-          <span className="text-sm font-medium flex-1">{nameB}</span>
-          <button className="btn-primary text-xs py-0.5 px-2" onClick={onSave}>✓</button>
-          <button className="btn-secondary text-xs py-0.5 px-2" onClick={onCancel}>✕</button>
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium flex-1 text-right">{nameA}</span>
+            <input type="number" min="0" max={maxScore} value={scoreAInput}
+              onChange={e => onScoreAChange(e.target.value)}
+              className={`w-12 text-center border rounded px-1 py-0.5 text-sm ${inputError ? 'border-red-400 bg-red-50' : ''}`}
+              autoFocus />
+            <span className="text-gray-400 font-bold">—</span>
+            <input type="number" min="0" max={maxScore} value={scoreBInput}
+              onChange={e => onScoreBChange(e.target.value)}
+              className={`w-12 text-center border rounded px-1 py-0.5 text-sm ${inputError ? 'border-red-400 bg-red-50' : ''}`} />
+            <span className="text-sm font-medium flex-1">{nameB}</span>
+            <button className="btn-primary text-xs py-0.5 px-2 disabled:opacity-40" onClick={onSave} disabled={!!inputError}>✓</button>
+            <button className="btn-secondary text-xs py-0.5 px-2" onClick={onCancel}>✕</button>
+          </div>
+          {inputError && (
+            <p className="text-xs text-red-600 text-center">{inputError}</p>
+          )}
         </div>
       ) : (
         <div className="flex items-center gap-2 cursor-pointer" onClick={disabled ? undefined : onEdit}>

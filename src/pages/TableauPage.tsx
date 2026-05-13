@@ -5,7 +5,7 @@ import type { TableauPhase, TableauBout } from '../types'
 
 export default function TableauPage() {
   const { tournamentId, contestId, stageId } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
-  const { tournaments, setTableauBoutScore } = useStore()
+  const { tournaments, setTableauBoutScore, fillRandomTableauBouts } = useStore()
   const tournament = tournaments.find(t => t.id === tournamentId)
   const contest = tournament?.contests.find(c => c.id === contestId)
   const stage = contest?.stages.find(s => s.id === stageId) as TableauPhase | undefined
@@ -31,9 +31,14 @@ export default function TableauPage() {
   }
 
   async function saveBout(boutId: string) {
+    if (!stage) return
     const sa = parseInt(scoreA)
     const sb = parseInt(scoreB)
-    if (isNaN(sa) || isNaN(sb) || sa === sb) return
+    if (isNaN(sa) || isNaN(sb)) return
+    if (sa === sb) return
+    if (sa < 0 || sb < 0) return
+    if (sa > stage.maxScore || sb > stage.maxScore) return
+    if (sa !== stage.maxScore && sb !== stage.maxScore) return
     await setTableauBoutScore(tournamentId!, contestId!, stageId!, boutId, sa, sb)
     setEditingBout(null)
     setScoreA('')
@@ -57,8 +62,23 @@ export default function TableauPage() {
       </div>
 
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-bold text-gray-800">{stage.name}</h1>
-        <button className="btn-secondary print:hidden" onClick={() => window.print()}>🖨️ Imprimer</button>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">{stage.name}</h1>
+          <div className="flex gap-3 mt-1 text-xs text-gray-500">
+            <span>Score max : <strong className="text-gray-700">{stage.maxScore}</strong></span>
+            <span>Tableau de <strong className="text-gray-700">{stage.size}</strong></span>
+            {stage.hasThirdPlace && <span className="text-gray-700">· 3e place</span>}
+          </div>
+        </div>
+        <div className="print:hidden flex gap-2 flex-wrap">
+          {import.meta.env.DEV && (
+            <button className="btn-secondary border-orange-300 text-orange-700 hover:bg-orange-50"
+              onClick={() => fillRandomTableauBouts(tournamentId!, contestId!, stageId!)}>
+              🎲 Scores aléatoires
+            </button>
+          )}
+          <button className="btn-secondary" onClick={() => window.print()}>🖨️ Imprimer</button>
+        </div>
       </div>
 
       <div className="space-y-8 overflow-x-auto">
@@ -118,14 +138,33 @@ function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, sco
       <div className="border-t border-gray-200" />
       <FencerSlot name={nameB} score={bout.scoreB} isWinner={bout.winnerId === bout.fencerBId} isBye={!bout.fencerBId} />
       {isEditing ? (
-        <div className="print:hidden bg-blue-50 px-3 py-2 flex gap-2 items-center border-t border-blue-200">
-          <input type="number" min="0" max={maxScore} value={scoreAInput} onChange={e => onScoreAChange(e.target.value)}
-            className="w-10 text-center border rounded px-1 py-0.5 text-sm" autoFocus />
-          <span className="text-gray-400">—</span>
-          <input type="number" min="0" max={maxScore} value={scoreBInput} onChange={e => onScoreBChange(e.target.value)}
-            className="w-10 text-center border rounded px-1 py-0.5 text-sm" />
-          <button className="btn-primary text-xs py-0.5 px-2 ml-auto" onClick={onSave}>✓</button>
-          <button className="btn-secondary text-xs py-0.5 px-2" onClick={onCancel}>✕</button>
+        <div className="print:hidden bg-blue-50 px-3 py-2 border-t border-blue-200 space-y-1">
+          {(() => {
+            const sa = parseInt(scoreAInput)
+            const sb = parseInt(scoreBInput)
+            const err = (() => {
+              if (isNaN(sa) || isNaN(sb)) return null
+              if (sa < 0 || sb < 0) return 'Score négatif impossible'
+              if (sa > maxScore || sb > maxScore) return `Score max : ${maxScore}`
+              if (sa === sb) return 'Égalité impossible en tableau'
+              if (sa !== maxScore && sb !== maxScore) return `Un des scores doit être ${maxScore}`
+              return null
+            })()
+            return (
+              <>
+                <div className="flex gap-2 items-center">
+                  <input type="number" min="0" max={maxScore} value={scoreAInput} onChange={e => onScoreAChange(e.target.value)}
+                    className={`w-10 text-center border rounded px-1 py-0.5 text-sm ${err ? 'border-red-400 bg-red-50' : ''}`} autoFocus />
+                  <span className="text-gray-400">—</span>
+                  <input type="number" min="0" max={maxScore} value={scoreBInput} onChange={e => onScoreBChange(e.target.value)}
+                    className={`w-10 text-center border rounded px-1 py-0.5 text-sm ${err ? 'border-red-400 bg-red-50' : ''}`} />
+                  <button className="btn-primary text-xs py-0.5 px-2 ml-auto disabled:opacity-40" onClick={onSave} disabled={!!err}>✓</button>
+                  <button className="btn-secondary text-xs py-0.5 px-2" onClick={onCancel}>✕</button>
+                </div>
+                {err && <p className="text-xs text-red-600 text-center">{err}</p>}
+              </>
+            )
+          })()}
         </div>
       ) : (
         canEdit && (
