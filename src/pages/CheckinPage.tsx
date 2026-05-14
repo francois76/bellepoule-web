@@ -10,7 +10,7 @@ const DEV_CLUBS = ['CSM Clamart','Châlons','Rodez','Paris UC','Grenoble Escrime
 
 export default function CheckinPage() {
   const { tournamentId, contestId } = useParams<{ tournamentId: string; contestId: string }>()
-  const { tournaments, addFencer, removeFencer, setPresence, setTeamPresence, addTeam } = useStore()
+  const { tournaments, addFencer, removeFencer, setPresence, setTeamPresence, addTeam, setAllPresence } = useStore()
   const tournament = tournaments.find(t => t.id === tournamentId)
   const contest = tournament?.contests.find(c => c.id === contestId)
   const [filter, setFilter] = useState('')
@@ -76,11 +76,7 @@ export default function CheckinPage() {
   }
 
   function handleSetAll(present: boolean) {
-    contest!.fencers.forEach(f => setPresence(tournamentId!, contestId!, f.id, present))
-    // For team events, also set team-level presence
-    if (contest!.isTeamEvent) {
-      contest!.teams.forEach(t => setTeamPresence(tournamentId!, contestId!, t.id, present))
-    }
+    setAllPresence(tournamentId!, contestId!, present)
   }
 
   async function handleInjectFakers() {
@@ -129,11 +125,11 @@ export default function CheckinPage() {
             <h2 className="font-semibold text-blue-800">Équipes</h2>
             <div className="flex gap-2">
               <button className="text-xs btn-secondary py-1 px-2"
-                onClick={() => contest.teams.forEach(t => setTeamPresence(tournamentId!, contestId!, t.id, true))}>
+                onClick={() => setAllPresence(tournamentId!, contestId!, true)}>
                 Toutes présentes
               </button>
               <button className="text-xs btn-secondary py-1 px-2"
-                onClick={() => contest.teams.forEach(t => setTeamPresence(tournamentId!, contestId!, t.id, false))}>
+                onClick={() => setAllPresence(tournamentId!, contestId!, false)}>
                 Toutes absentes
               </button>
             </div>

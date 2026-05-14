@@ -24,6 +24,7 @@ interface AppState {
   updateFencer: (tournamentId: string, contestId: string, fencer: Fencer) => Promise<void>
   removeFencer: (tournamentId: string, contestId: string, fencerId: string) => Promise<void>
   setPresence: (tournamentId: string, contestId: string, fencerId: string, present: boolean) => Promise<void>
+  setAllPresence: (tournamentId: string, contestId: string, present: boolean) => Promise<void>
 
   // Referees
   addReferee: (tournamentId: string, contestId: string, referee: Omit<Referee, 'id'>) => Promise<void>
@@ -198,6 +199,19 @@ export const useStore = create<AppState>((set, get) => ({
     const updated = mutateContest(t, contestId, c => ({
       ...c,
       fencers: c.fencers.map(f => f.id === fencerId ? { ...f, present } : f),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
+  setAllPresence: async (tournamentId, contestId, present) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    // Update fencers and teams in one single mutation to avoid concurrent write races
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      fencers: c.fencers.map(f => ({ ...f, present })),
+      teams: c.teams.map(team => ({ ...team, present })),
     }))
     await saveTournament(updated)
     set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))

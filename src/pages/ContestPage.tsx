@@ -154,7 +154,9 @@ export default function ContestPage() {
         <ActionCard
           icon="📋"
           label="Checkin"
-          sub={`${presentCount}/${contest.fencers.length}`}
+          sub={contest.isTeamEvent
+            ? `${presentCount}/${(contest.teams ?? []).length} éq.`
+            : `${presentCount}/${contest.fencers.length}`}
           onClick={() => navigate(`/tournament/${tournamentId}/contest/${contestId}/checkin`)}
         />
         <ActionCard
