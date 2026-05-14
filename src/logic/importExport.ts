@@ -177,7 +177,15 @@ export function importBellePouleXML(xmlText: string): Partial<Contest> & { fence
   for (const [teamName, fencerIds] of teamMap.entries()) {
     // Derive club from the first fencer's club
     const club = fencers.find(f => fencerIds.includes(f.id))?.club
-    teams.push({ id: nanoid(), name: teamName, club, fencerIds })
+    // Team is present if at least 1 member is present
+    const teamFencers = fencerIds.map(id => fencers.find(f => f.id === id)).filter((f): f is import('../types').Fencer => !!f)
+    const present = teamFencers.some(f => f.present)
+    // Team initialRank = sum of the 3 best (lowest) member initialRanks (standard team minimum size = 3)
+    const memberRanks = teamFencers.map(f => f.initialRank ?? 99999).sort((a, b) => a - b)
+    const n = Math.min(3, memberRanks.length)
+    const rankSum = memberRanks.slice(0, n).reduce((s, r) => s + r, 0)
+    const initialRank = n > 0 && rankSum < 99999 * n ? rankSum : undefined
+    teams.push({ id: nanoid(), name: teamName, club, fencerIds, present, initialRank })
   }
 
   // Parse referees from <Arbitres> section (cotcot only)

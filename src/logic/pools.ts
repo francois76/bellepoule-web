@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid'
-import type { Fencer, Pool, PoolBout } from '../types'
+import type { Pool, PoolBout } from '../types'
 
 // FIE standard bout order for pools up to 9 fencers
 // Each pair is [1-indexed positions in pool]
@@ -17,17 +17,17 @@ const FIE_ORDER: Record<number, [number, number][]> = {
 }
 
 /**
- * Distribute fencers into pools (snake seeding to balance levels).
- * seedOrder: optional array of fencer IDs in rank order (e.g. from a previous pool round).
- * When provided, fencers are seeded by their position in seedOrder instead of initialRank.
+ * Distribute participants (fencers or teams) into pools (snake seeding to balance levels).
+ * seedOrder: optional array of participant IDs in rank order (e.g. from a previous pool round).
+ * When provided, participants are seeded by their position in seedOrder instead of initialRank.
  */
-export function allocatePools(fencers: Fencer[], poolCount: number, seedOrder?: string[]): Pool[] {
-  let sorted: Fencer[]
+export function allocatePools(participants: { id: string, initialRank?: number }[], poolCount: number, seedOrder?: string[]): Pool[] {
+  let sorted: { id: string, initialRank?: number }[]
   if (seedOrder && seedOrder.length > 0) {
     const rankMap = new Map(seedOrder.map((id, i) => [id, i]))
-    sorted = [...fencers].sort((a, b) => (rankMap.get(a.id) ?? 9999) - (rankMap.get(b.id) ?? 9999))
+    sorted = [...participants].sort((a, b) => (rankMap.get(a.id) ?? 9999) - (rankMap.get(b.id) ?? 9999))
   } else {
-    sorted = [...fencers].sort((a, b) => (a.initialRank ?? 9999) - (b.initialRank ?? 9999))
+    sorted = [...participants].sort((a, b) => (a.initialRank ?? 9999) - (b.initialRank ?? 9999))
   }
 
   const pools: Pool[] = Array.from({ length: poolCount }, (_, i) => ({

@@ -13,7 +13,11 @@ export default function ClassificationPage() {
 
   if (!tournament || !contest) return <div className="text-red-500">Compétition introuvable</div>
 
-  const fencerMap = Object.fromEntries(contest.fencers.map(f => [f.id, f]))
+  // Unified participant map: team IDs → name/club for team events, fencer IDs for individual events
+  type ParticipantInfo = { name: string; club?: string; country?: string }
+  const participantMap: Record<string, ParticipantInfo> = contest.isTeamEvent
+    ? Object.fromEntries(contest.teams.map(t => [t.id, { name: t.name, club: t.club }]))
+    : Object.fromEntries(contest.fencers.map(f => [f.id, { name: `${f.lastName.toUpperCase()} ${f.firstName}`, club: f.club, country: f.country }]))
 
   // Build classification: prefer tableau results, then pool results
   const lastTableau = [...contest.stages].reverse().find(s => s.type === 'tableau') as TableauPhase | undefined
@@ -46,11 +50,18 @@ export default function ClassificationPage() {
   } else if (lastPool) {
     entries = lastPool.results.map(r => ({ rank: r.rank, fencerId: r.fencerId, source: 'pool' }))
   } else {
-    // No results yet — show all present fencers by initial rank
-    entries = contest.fencers
-      .filter(f => f.present)
-      .sort((a, b) => (a.initialRank ?? 9999) - (b.initialRank ?? 9999))
-      .map((f, idx) => ({ rank: idx + 1, fencerId: f.id, source: 'initial' }))
+    // No results yet — show all present participants by initial rank
+    if (contest.isTeamEvent) {
+      entries = contest.teams
+        .filter(t => t.present)
+        .sort((a, b) => (a.initialRank ?? 99999) - (b.initialRank ?? 99999))
+        .map((t, idx) => ({ rank: idx + 1, fencerId: t.id, source: 'initial' }))
+    } else {
+      entries = contest.fencers
+        .filter(f => f.present)
+        .sort((a, b) => (a.initialRank ?? 9999) - (b.initialRank ?? 9999))
+        .map((f, idx) => ({ rank: idx + 1, fencerId: f.id, source: 'initial' }))
+    }
   }
 
   function handlePrint() {
@@ -105,15 +116,15 @@ export default function ClassificationPage() {
           <thead className="bg-[#1e3a5f] text-white print:bg-[#1e3a5f]">
             <tr>
               <th className="px-4 py-3 text-left w-16">Rang</th>
-              <th className="px-4 py-3 text-left">Nom</th>
-              <th className="px-4 py-3 text-left">Prénom</th>
+              <th className="px-4 py-3 text-left" colSpan={contest.isTeamEvent ? 2 : 1}>Nom</th>
+              {!contest.isTeamEvent && <th className="px-4 py-3 text-left">Prénom</th>}
               <th className="px-4 py-3 text-left hidden sm:table-cell print:table-cell">Club</th>
               <th className="px-4 py-3 text-left hidden md:table-cell print:table-cell">Nation</th>
             </tr>
           </thead>
           <tbody>
             {entries.map(entry => {
-              const f = fencerMap[entry.fencerId]
+              const p = participantMap[entry.fencerId]
               return (
                 <tr key={entry.fencerId} className={`border-b border-gray-100 ${entry.rank <= 3 ? 'bg-yellow-50' : entry.rank % 2 === 0 ? 'bg-gray-50' : ''}`}>
                   <td className="px-4 py-2">
@@ -122,10 +133,10 @@ export default function ClassificationPage() {
                       {entry.rank}
                     </span>
                   </td>
-                  <td className="px-4 py-2 font-medium text-gray-800">{f?.lastName.toUpperCase() ?? '?'}</td>
-                  <td className="px-4 py-2 text-gray-700">{f?.firstName ?? ''}</td>
-                  <td className="px-4 py-2 text-gray-500 hidden sm:table-cell print:table-cell">{f?.club ?? '—'}</td>
-                  <td className="px-4 py-2 text-gray-500 hidden md:table-cell print:table-cell">{f?.country ?? '—'}</td>
+                  <td className="px-4 py-2 font-medium text-gray-800" colSpan={contest.isTeamEvent ? 2 : 1}>{p?.name ?? '?'}</td>
+                  {!contest.isTeamEvent && <td className="px-4 py-2 text-gray-500 hidden sm:table-cell print:table-cell">{p?.club ?? '—'}</td>}
+                  {contest.isTeamEvent && <td className="px-4 py-2 text-gray-500 hidden sm:table-cell print:table-cell">{p?.club ?? '—'}</td>}
+                  <td className="px-4 py-2 text-gray-500 hidden md:table-cell print:table-cell">{p?.country ?? '—'}</td>
                 </tr>
               )
             })}

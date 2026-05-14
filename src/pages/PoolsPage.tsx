@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useStore } from '../store'
-import type { PoolPhase, PoolBout, Pool, Fencer, Referee } from '../types'
+import type { PoolPhase, PoolBout, Pool, Referee } from '../types'
 
 export default function PoolsPage() {
   const { tournamentId, contestId, stageId } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
@@ -20,10 +20,18 @@ export default function PoolsPage() {
 
   if (!tournament || !contest || !stage || stage.type !== 'pool') return <div className="text-red-500">Phase introuvable</div>
 
-  const fencerMap = Object.fromEntries(contest.fencers.map(f => [f.id, f]))
+  // Unified participant map: for team events, maps team IDs to display info;
+  // for individual events, maps fencer IDs to display info.
+  type ParticipantInfo = { name: string; club?: string }
+  const participantMap: Record<string, ParticipantInfo> = contest.isTeamEvent
+    ? Object.fromEntries(contest.teams.map(t => [t.id, { name: t.name, club: t.club }]))
+    : Object.fromEntries(contest.fencers.map(f => [f.id, { name: `${f.lastName.toUpperCase()} ${f.firstName}`, club: f.club }]))
+
   const pool = stage.pools[selectedPool]
 
-  const presentCount = contest.fencers.filter(f => f.present).length
+  const presentCount = contest.isTeamEvent
+    ? contest.teams.filter(t => t.present).length
+    : contest.fencers.filter(f => f.present).length
 
   function openAllocateModal() {
     setPoolCountInput(String(Math.ceil(presentCount / 6)))
@@ -57,11 +65,11 @@ export default function PoolsPage() {
     setScoreB(String(bout.scoreB ?? ''))
   }
 
-  function fencerName(id: string) {
-    const f = fencerMap[id]
-    if (!f) return '?'
-    return `${f.lastName.toUpperCase()} ${f.firstName}`
+  function participantName(id: string) {
+    return participantMap[id]?.name ?? '?'
   }
+
+  const participantLabel = contest.isTeamEvent ? 'équipes' : 'tireurs'
 
   return (
     <div className="space-y-5">
@@ -124,7 +132,7 @@ export default function PoolsPage() {
         <div className="print:hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
             <h2 className="text-lg font-bold text-gray-800">Allouer les poules</h2>
-            <p className="text-sm text-gray-500">{presentCount} tireurs présents</p>
+            <p className="text-sm text-gray-500">{presentCount} {participantLabel} présent{contest.isTeamEvent ? 'es' : 's'}</p>
             <form onSubmit={handleAllocate} className="space-y-3">
               <div>
                 <label className="label">Nombre de poules</label>
@@ -134,7 +142,7 @@ export default function PoolsPage() {
                   required autoFocus />
                 {poolCountInput && parseInt(poolCountInput) > 0 && (
                   <p className="text-xs text-gray-400 mt-1">
-                    ~{Math.ceil(presentCount / parseInt(poolCountInput))} tireurs par poule
+                    ~{Math.ceil(presentCount / parseInt(poolCountInput))} {participantLabel} par poule
                   </p>
                 )}
               </div>
@@ -150,7 +158,7 @@ export default function PoolsPage() {
       {stage.pools.length === 0 ? (
         <div className="print:hidden text-center py-12 text-gray-400">
           <p className="text-4xl mb-3">🤺</p>
-          <p>Cliquez sur "Allouer les poules" pour distribuer les tireurs</p>
+          <p>Cliquez sur "Allouer les poules" pour distribuer les {participantLabel}</p>
         </div>
       ) : (
         <>
@@ -170,13 +178,13 @@ export default function PoolsPage() {
             <div className="print:hidden grid gap-5 lg:grid-cols-2">
               {/* Pool composition */}
               <div className="card">
-                <h2 className="font-semibold text-gray-700 mb-3">Poule {pool.number} — Tireurs</h2>
+                <h2 className="font-semibold text-gray-700 mb-3">Poule {pool.number} — {contest.isTeamEvent ? 'Équipes' : 'Tireurs'}</h2>
                 <ol className="space-y-1">
                   {pool.fencerIds.map((fId, idx) => (
                     <li key={fId} className="flex items-center gap-2 text-sm">
                       <span className="w-5 h-5 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-bold">{idx + 1}</span>
-                      <span className="text-gray-800">{fencerName(fId)}</span>
-                      {fencerMap[fId]?.club && <span className="text-gray-400 text-xs">({fencerMap[fId].club})</span>}
+                      <span className="text-gray-800">{participantName(fId)}</span>
+                      {participantMap[fId]?.club && <span className="text-gray-400 text-xs">({participantMap[fId].club})</span>}
                     </li>
                   ))}
                 </ol>
@@ -189,8 +197,8 @@ export default function PoolsPage() {
                   {pool.bouts.map(bout => (
                     <BoutRow key={bout.id}
                       bout={bout}
-                      nameA={fencerName(bout.fencerAId)}
-                      nameB={fencerName(bout.fencerBId)}
+                      nameA={participantName(bout.fencerAId)}
+                      nameB={participantName(bout.fencerBId)}
                       maxScore={stage.maxScore}
                       isEditing={editingBout === bout.id}
                       scoreAInput={scoreA}
@@ -253,7 +261,7 @@ export default function PoolsPage() {
               {stage.results.map(r => (
                 <tr key={r.fencerId} className={`border-t border-gray-100 ${r.status === 'qualified' ? '' : 'opacity-60'}`}>
                   <td className="px-3 py-2 font-bold text-gray-700">{r.rank}</td>
-                  <td className="px-3 py-2">{fencerName(r.fencerId)}</td>
+                  <td className="px-3 py-2">{participantName(r.fencerId)}</td>
                   <td className="px-3 py-2 text-center">{r.victories}</td>
                   <td className="px-3 py-2 text-center">{r.bouts}</td>
                   <td className="px-3 py-2 text-center">{r.touchesScored}</td>
@@ -281,7 +289,7 @@ export default function PoolsPage() {
               key={p.id}
               pool={p}
               stage={stage}
-              fencerMap={fencerMap}
+              participantMap={participantMap}
               contest={contest}
               tournament={tournament}
               referees={contest.referees}
@@ -296,10 +304,10 @@ export default function PoolsPage() {
 const WEAPON_LABEL: Record<string, string> = { epee: 'Épée', foil: 'Fleuret', sabre: 'Sabre' }
 const GENDER_LABEL: Record<string, string> = { men: 'Messieurs', women: 'Dames', mixed: 'Mixte' }
 
-function PoolScoreSheet({ pool, stage, fencerMap, contest, tournament, referees }: {
+function PoolScoreSheet({ pool, stage, participantMap, contest, tournament, referees }: {
   pool: Pool
   stage: PoolPhase
-  fencerMap: Record<string, Fencer>
+  participantMap: Record<string, { name: string; club?: string }>
   contest: import('../types').Contest
   tournament: import('../types').Tournament
   referees: Referee[]
@@ -320,12 +328,12 @@ function PoolScoreSheet({ pool, stage, fencerMap, contest, tournament, referees 
   const locationLabel = contest.location ?? tournament.location ?? ''
 
   const fencers = pool.fencerIds.map((id, idx) => {
-    const f = fencerMap[id]
+    const p = participantMap[id]
     return {
       id,
       num: idx + 1,
-      name: f ? `${f.lastName.toUpperCase()} ${f.firstName}` : '?',
-      club: f?.club ?? '',
+      name: p?.name ?? '?',
+      club: p?.club ?? '',
     }
   })
 

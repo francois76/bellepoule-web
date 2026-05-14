@@ -27,7 +27,9 @@ export interface Team {
   id: string
   name: string
   club?: string
-  fencerIds: string[] // IDs of Fencer entries in this team
+  fencerIds: string[]   // IDs of Fencer entries in this team
+  present: boolean      // whether the team is eligible to compete
+  initialRank?: number  // seeding rank (sum of N best member initial ranks, lower = better seeded)
 }
 
 // ─── Referee ──────────────────────────────────────────────────────────────────

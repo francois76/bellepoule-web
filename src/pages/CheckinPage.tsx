@@ -10,7 +10,7 @@ const DEV_CLUBS = ['CSM Clamart','Châlons','Rodez','Paris UC','Grenoble Escrime
 
 export default function CheckinPage() {
   const { tournamentId, contestId } = useParams<{ tournamentId: string; contestId: string }>()
-  const { tournaments, addFencer, removeFencer, setPresence } = useStore()
+  const { tournaments, addFencer, removeFencer, setPresence, setTeamPresence, addTeam } = useStore()
   const tournament = tournaments.find(t => t.id === tournamentId)
   const contest = tournament?.contests.find(c => c.id === contestId)
   const [filter, setFilter] = useState('')
@@ -45,10 +45,11 @@ export default function CheckinPage() {
     const file = e.target.files?.[0]
     if (!file) return
     const text = await readFileText(file)
-    let fencers: Omit<Fencer, 'id'>[] = []
+    let fencers: Fencer[] = []
+    let importedTeams: import('../types').Team[] = []
     try {
       if (file.name.endsWith('.fff') || file.name.endsWith('.FFF')) {
-        fencers = importFFF(text)
+        fencers = importFFF(text) as unknown as Fencer[]
       } else if (
         file.name.endsWith('.xml') || file.name.endsWith('.XML') ||
         file.name.endsWith('.cotcot')
@@ -56,8 +57,9 @@ export default function CheckinPage() {
         try {
           const partial = importBellePouleXML(text)
           fencers = partial.fencers ?? []
+          importedTeams = partial.teams ?? []
         } catch {
-          fencers = importFFF(text)
+          fencers = importFFF(text) as unknown as Fencer[]
         }
       }
     } catch (err: unknown) {
@@ -65,6 +67,10 @@ export default function CheckinPage() {
     }
     for (const f of fencers) {
       await addFencer(tournamentId!, contestId!, f)
+    }
+    // For team events: add teams from XML (preserving fencerIds that reference the just-added fencers)
+    for (const team of importedTeams) {
+      await addTeam(tournamentId!, contestId!, { name: team.name, club: team.club, fencerIds: team.fencerIds, present: team.present, initialRank: team.initialRank })
     }
     e.target.value = ''
   }
@@ -106,12 +112,75 @@ export default function CheckinPage() {
 
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800">Checkin</h1>
-        <span className="text-lg font-semibold text-blue-700">{presentCount} / {contest.fencers.length} présents</span>
+        {contest.isTeamEvent
+          ? <span className="text-lg font-semibold text-blue-700">{contest.teams.filter(t => t.present).length} / {contest.teams.length} équipes présentes</span>
+          : <span className="text-lg font-semibold text-blue-700">{presentCount} / {contest.fencers.length} présents</span>
+        }
       </div>
+
+      {/* Teams section — team events only */}
+      {contest.isTeamEvent && contest.teams.length > 0 && (
+        <div className="card p-0 overflow-hidden">
+          <div className="px-4 py-3 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
+            <h2 className="font-semibold text-blue-800">Équipes</h2>
+            <div className="flex gap-2">
+              <button className="text-xs btn-secondary py-1 px-2"
+                onClick={() => contest.teams.forEach(t => setTeamPresence(tournamentId!, contestId!, t.id, true))}>
+                Toutes présentes
+              </button>
+              <button className="text-xs btn-secondary py-1 px-2"
+                onClick={() => contest.teams.forEach(t => setTeamPresence(tournamentId!, contestId!, t.id, false))}>
+                Toutes absentes
+              </button>
+            </div>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-4 py-2 text-left font-medium text-gray-600">Présente</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-600">Équipe</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-600 hidden sm:table-cell">Club</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-600">Membres présents</th>
+                {contest.teams.some(t => t.initialRank !== undefined) && (
+                  <th className="px-4 py-2 text-left font-medium text-gray-600 hidden md:table-cell">Rang</th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {contest.teams.map((team, idx) => {
+                const memberFencers = team.fencerIds.map(id => contest.fencers.find(f => f.id === id)).filter(Boolean) as import('../types').Fencer[]
+                const presentMembers = memberFencers.filter(f => f.present).length
+                return (
+                  <tr key={team.id} className={`border-b border-gray-100 ${idx % 2 === 0 ? '' : 'bg-gray-50'} ${!team.present ? 'opacity-50' : ''}`}>
+                    <td className="px-4 py-2">
+                      <input type="checkbox" checked={team.present}
+                        onChange={e => setTeamPresence(tournamentId!, contestId!, team.id, e.target.checked)}
+                        className="w-4 h-4 accent-blue-600" />
+                    </td>
+                    <td className="px-4 py-2 font-medium text-gray-800">{team.name}</td>
+                    <td className="px-4 py-2 text-gray-500 hidden sm:table-cell">{team.club ?? '—'}</td>
+                    <td className="px-4 py-2 text-gray-600">
+                      <span className={presentMembers < 3 ? 'text-orange-600 font-medium' : 'text-green-700'}>
+                        {presentMembers}
+                      </span>
+                      <span className="text-gray-400"> / {memberFencers.length}</span>
+                    </td>
+                    {contest.teams.some(t => t.initialRank !== undefined) && (
+                      <td className="px-4 py-2 text-gray-500 hidden md:table-cell">{team.initialRank ?? '—'}</td>
+                    )}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Toolbar */}
       <div className="flex flex-wrap gap-2">
-        <input className="input flex-1 min-w-48" placeholder="Rechercher un tireur…" value={filter} onChange={e => setFilter(e.target.value)} />
+        <input className="input flex-1 min-w-48"
+          placeholder={contest.isTeamEvent ? 'Rechercher un membre…' : 'Rechercher un tireur…'}
+          value={filter} onChange={e => setFilter(e.target.value)} />
         <button className="btn-secondary text-sm" onClick={() => handleSetAll(true)}>Tous présents</button>
         <button className="btn-secondary text-sm" onClick={() => handleSetAll(false)}>Tous absents</button>
         <label className="btn-secondary cursor-pointer text-sm">
@@ -175,7 +244,9 @@ export default function CheckinPage() {
       <div className="card p-0 overflow-hidden">
         {filtered.length === 0 ? (
           <p className="text-center text-gray-400 py-10">
-            {contest.fencers.length === 0 ? 'Aucun tireur inscrit' : 'Aucun résultat pour cette recherche'}
+            {contest.fencers.length === 0
+              ? (contest.isTeamEvent ? 'Aucun membre inscrit' : 'Aucun tireur inscrit')
+              : 'Aucun résultat pour cette recherche'}
           </p>
         ) : (
           <table className="w-full text-sm">
@@ -184,6 +255,7 @@ export default function CheckinPage() {
                 <th className="px-4 py-2 text-left font-medium text-gray-600">Présent</th>
                 <th className="px-4 py-2 text-left font-medium text-gray-600">Nom</th>
                 <th className="px-4 py-2 text-left font-medium text-gray-600">Prénom</th>
+                {contest.isTeamEvent && <th className="px-4 py-2 text-left font-medium text-gray-600 hidden sm:table-cell">Équipe</th>}
                 <th className="px-4 py-2 text-left font-medium text-gray-600 hidden sm:table-cell">Club</th>
                 <th className="px-4 py-2 text-left font-medium text-gray-600 hidden md:table-cell">Né</th>
                 <th className="px-4 py-2 text-left font-medium text-gray-600 hidden md:table-cell">Rang</th>
@@ -191,24 +263,28 @@ export default function CheckinPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((f, idx) => (
-                <tr key={f.id} className={`border-b border-gray-100 ${idx % 2 === 0 ? '' : 'bg-gray-50'} ${!f.present ? 'opacity-50' : ''}`}>
-                  <td className="px-4 py-2">
-                    <input type="checkbox" checked={f.present}
-                      onChange={e => setPresence(tournamentId!, contestId!, f.id, e.target.checked)}
-                      className="w-4 h-4 accent-blue-600" />
-                  </td>
-                  <td className="px-4 py-2 font-medium text-gray-800">{f.lastName.toUpperCase()}</td>
-                  <td className="px-4 py-2 text-gray-700">{f.firstName}</td>
-                  <td className="px-4 py-2 text-gray-500 hidden sm:table-cell">{f.club ?? '—'}</td>
-                  <td className="px-4 py-2 text-gray-500 hidden md:table-cell">{f.birthYear ?? '—'}</td>
-                  <td className="px-4 py-2 text-gray-500 hidden md:table-cell">{f.initialRank ?? '—'}</td>
-                  <td className="px-4 py-2">
-                    <button className="text-gray-300 hover:text-red-500 transition-colors"
-                      onClick={() => { if (confirm(`Supprimer ${f.lastName} ?`)) removeFencer(tournamentId!, contestId!, f.id) }}>✕</button>
-                  </td>
-                </tr>
-              ))}
+              {filtered.map((f, idx) => {
+                const team = contest.isTeamEvent ? contest.teams.find(t => t.fencerIds.includes(f.id)) : undefined
+                return (
+                  <tr key={f.id} className={`border-b border-gray-100 ${idx % 2 === 0 ? '' : 'bg-gray-50'} ${!f.present ? 'opacity-50' : ''}`}>
+                    <td className="px-4 py-2">
+                      <input type="checkbox" checked={f.present}
+                        onChange={e => setPresence(tournamentId!, contestId!, f.id, e.target.checked)}
+                        className="w-4 h-4 accent-blue-600" />
+                    </td>
+                    <td className="px-4 py-2 font-medium text-gray-800">{f.lastName.toUpperCase()}</td>
+                    <td className="px-4 py-2 text-gray-700">{f.firstName}</td>
+                    {contest.isTeamEvent && <td className="px-4 py-2 text-gray-500 hidden sm:table-cell text-xs">{team?.name ?? '—'}</td>}
+                    <td className="px-4 py-2 text-gray-500 hidden sm:table-cell">{f.club ?? '—'}</td>
+                    <td className="px-4 py-2 text-gray-500 hidden md:table-cell">{f.birthYear ?? '—'}</td>
+                    <td className="px-4 py-2 text-gray-500 hidden md:table-cell">{f.initialRank ?? '—'}</td>
+                    <td className="px-4 py-2">
+                      <button className="text-gray-300 hover:text-red-500 transition-colors"
+                        onClick={() => { if (confirm(`Supprimer ${f.lastName} ?`)) removeFencer(tournamentId!, contestId!, f.id) }}>✕</button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}

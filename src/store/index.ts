@@ -20,7 +20,7 @@ interface AppState {
   removeContest: (tournamentId: string, contestId: string) => Promise<void>
 
   // Fencers
-  addFencer: (tournamentId: string, contestId: string, fencer: Omit<Fencer, 'id'>) => Promise<void>
+  addFencer: (tournamentId: string, contestId: string, fencer: Omit<Fencer, 'id'> & { id?: string }) => Promise<void>
   updateFencer: (tournamentId: string, contestId: string, fencer: Fencer) => Promise<void>
   removeFencer: (tournamentId: string, contestId: string, fencerId: string) => Promise<void>
   setPresence: (tournamentId: string, contestId: string, fencerId: string, present: boolean) => Promise<void>
@@ -34,6 +34,7 @@ interface AppState {
   addTeam: (tournamentId: string, contestId: string, team: Omit<Team, 'id'>) => Promise<Team>
   removeTeam: (tournamentId: string, contestId: string, teamId: string) => Promise<void>
   addFencerToTeam: (tournamentId: string, contestId: string, teamId: string, fencerId: string) => Promise<void>
+  setTeamPresence: (tournamentId: string, contestId: string, teamId: string, present: boolean) => Promise<void>
 
   // Stages
   addPoolPhase: (tournamentId: string, contestId: string, name: string, maxScore: number, promotionPercent: number) => Promise<void>
@@ -162,7 +163,8 @@ export const useStore = create<AppState>((set, get) => ({
   addFencer: async (tournamentId, contestId, fencerData) => {
     const { tournaments } = get()
     const t = getTournamentOrThrow(tournaments, tournamentId)
-    const fencer: Fencer = { ...fencerData, id: nanoid() }
+    // Preserve the ID if one was supplied (e.g. from XML import) so team fencerIds stay consistent
+    const fencer: Fencer = { id: nanoid(), ...fencerData }
     const updated = mutateContest(t, contestId, c => ({ ...c, fencers: [...c.fencers, fencer] }))
     await saveTournament(updated)
     set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
@@ -272,6 +274,17 @@ export const useStore = create<AppState>((set, get) => ({
     set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
   },
 
+  setTeamPresence: async (tournamentId, contestId, teamId, present) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      teams: c.teams.map(team => team.id === teamId ? { ...team, present } : team),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
   // ── Pool phase ─────────────────────────────────────────────────────────────
 
   addPoolPhase: async (tournamentId, contestId, name, maxScore, promotionPercent) => {
@@ -296,7 +309,6 @@ export const useStore = create<AppState>((set, get) => ({
     const { tournaments } = get()
     const t = getTournamentOrThrow(tournaments, tournamentId)
     const contest = getContestOrThrow(t, contestId)
-    const presentFencers = contest.fencers.filter(f => f.present)
 
     // If a previous pool phase exists and is done, use its ranking as seeding order
     // (FIE rule: 2nd pool round seeded from 1st round results, not initial ranking)
@@ -309,7 +321,12 @@ export const useStore = create<AppState>((set, get) => ({
       ? [...prevPoolPhase.results].sort((a, b) => a.rank - b.rank).map(r => r.fencerId)
       : undefined
 
-    const pools = allocatePools(presentFencers, poolCount, seedOrder)
+    // For team events, pools contain teams (not individual fencers)
+    const participants = contest.isTeamEvent
+      ? contest.teams.filter(team => team.present).map(team => ({ id: team.id, initialRank: team.initialRank }))
+      : contest.fencers.filter(f => f.present)
+
+    const pools = allocatePools(participants, poolCount, seedOrder)
     const updated = mutateContest(t, contestId, c => ({
       ...c,
       stages: c.stages.map(s => s.id === stageId && s.type === 'pool'
@@ -662,7 +679,13 @@ function getSeedOrder(contest: Contest): string[] {
       .sort((a, b) => a.rank - b.rank)
       .map(r => r.fencerId)
   }
-  // Fallback: present fencers sorted by initialRank
+  // Fallback: present participants sorted by initialRank
+  if (contest.isTeamEvent) {
+    return contest.teams
+      .filter(t => t.present)
+      .sort((a, b) => (a.initialRank ?? 99999) - (b.initialRank ?? 99999))
+      .map(t => t.id)
+  }
   return contest.fencers
     .filter(f => f.present)
     .sort((a, b) => (a.initialRank ?? 9999) - (b.initialRank ?? 9999))
