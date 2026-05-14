@@ -167,6 +167,7 @@ export default function TableauPage() {
           const label = round === 2 ? 'Finale' : round === 4 ? 'Demi-finales' : round === 8 ? 'Quarts de finale' : `Tableau de ${round}`
           const isActive = round === activeRound
           const isLocked = lockedRounds.includes(round)
+          const prevRoundOpen = rounds.includes(round * 2) && !lockedRounds.includes(round * 2)
           const isLastLocked = round === lastLockedRound
           const realBouts = roundBouts.filter(b => b.fencerAId && b.fencerBId)
           const allRoundScored = realBouts.length > 0 && realBouts.every(b => b.winnerId)
@@ -213,7 +214,7 @@ export default function TableauPage() {
                     onSave={() => saveBout(bout.id)}
                     onCancel={() => setEditingBout(null)}
                     onQuickScore={(sa, sb) => quickSaveBout(bout.id, sa, sb)}
-                    roundLocked={isLocked}
+                    roundLocked={isLocked || prevRoundOpen}
                   />
                 ))}
               </div>
