@@ -32,21 +32,63 @@ export default function ClassificationPage() {
   let entries: RankEntry[] = []
 
   if (lastTableau) {
-    // Extract ranking from bracket: final winner = 1st, loser = 2nd, 3rd place...
-    const finalBout = lastTableau.bouts.find(b => b.round === 2 && b.boutIndex === 0)
-    const semiFinals = lastTableau.bouts.filter(b => b.round === 4)
-    const thirdPlaceBout = lastTableau.bouts.find(b => b.round === 4 && b.boutIndex >= semiFinals.length)
+    // Pool rank lookup for tie-breaking within elimination groups
+    const poolRank: Record<string, number> = {}
+    if (lastPool) {
+      for (const r of lastPool.results) poolRank[r.fencerId] = r.rank
+    }
 
     const ranked: string[] = []
-    if (finalBout?.winnerId) ranked.push(finalBout.winnerId)
-    const finalist = finalBout ? (finalBout.winnerId === finalBout.fencerAId ? finalBout.fencerBId : finalBout.fencerAId) : undefined
-    if (finalist) ranked.push(finalist)
-    if (thirdPlaceBout?.winnerId) ranked.push(thirdPlaceBout.winnerId)
 
-    // Add remaining qualified from pool if available
-    const poolQualified = lastPool?.results.filter(r => r.status === 'qualified').map(r => r.fencerId) ?? []
-    const remaining = poolQualified.filter(id => !ranked.includes(id))
-    entries = [...ranked, ...remaining].map((fId, idx) => ({ rank: idx + 1, fencerId: fId, source: 'tableau' }))
+    // 1st / 2nd: from the final
+    const finalBout = lastTableau.bouts.find(b => b.round === 2 && b.boutIndex === 0)
+    if (finalBout?.winnerId) {
+      ranked.push(finalBout.winnerId)
+      const finalist = finalBout.fencerAId === finalBout.winnerId ? finalBout.fencerBId : finalBout.fencerAId
+      if (finalist) ranked.push(finalist)
+    }
+
+    // 3rd / 4th: from petite finale, or ex-aequo semi-final losers sorted by pool rank
+    const thirdPlaceBout = lastTableau.hasThirdPlace
+      ? lastTableau.bouts.find(b => b.round === 4 && b.boutIndex === 2)
+      : undefined
+    if (thirdPlaceBout?.winnerId) {
+      ranked.push(thirdPlaceBout.winnerId)
+      const fourth = thirdPlaceBout.fencerAId === thirdPlaceBout.winnerId ? thirdPlaceBout.fencerBId : thirdPlaceBout.fencerAId
+      if (fourth) ranked.push(fourth)
+    } else {
+      // No petite finale (or not yet played): both semi-final losers ex-aequo 3rd, sorted by pool rank
+      const semiLosers = lastTableau.bouts
+        .filter(b => b.round === 4 && b.boutIndex !== 2 && b.fencerAId && b.fencerBId && b.winnerId)
+        .map(b => (b.fencerAId === b.winnerId ? b.fencerBId! : b.fencerAId!))
+        .sort((a, b) => (poolRank[a] ?? 9999) - (poolRank[b] ?? 9999))
+      ranked.push(...semiLosers)
+    }
+
+    // 5th+, 9th+, 17th+, … : losers of each earlier round, sorted by pool rank within each group
+    const eliminationRounds = [...new Set(lastTableau.bouts.map(b => b.round))]
+      .filter(r => r >= 8)
+      .sort((a, b) => a - b) // 8 → 16 → 32 → 64 → 128
+
+    for (const round of eliminationRounds) {
+      const losers = lastTableau.bouts
+        .filter(b => b.round === round && b.fencerAId && b.fencerBId && b.winnerId)
+        .map(b => (b.fencerAId === b.winnerId ? b.fencerBId! : b.fencerAId!))
+        .filter(id => !ranked.includes(id))
+        .sort((a, b) => (poolRank[a] ?? 9999) - (poolRank[b] ?? 9999))
+      ranked.push(...losers)
+    }
+
+    // Remaining present fencers (didn't play / no result yet), sorted by pool rank
+    const allPresent = contest.isTeamEvent
+      ? contest.teams.filter(t => t.present).map(t => t.id)
+      : contest.fencers.filter(f => f.present).map(f => f.id)
+    const remaining = allPresent
+      .filter(id => !ranked.includes(id))
+      .sort((a, b) => (poolRank[a] ?? 9999) - (poolRank[b] ?? 9999))
+    ranked.push(...remaining)
+
+    entries = ranked.map((fId, idx) => ({ rank: idx + 1, fencerId: fId, source: 'tableau' }))
   } else if (lastPool) {
     entries = lastPool.results.map(r => ({ rank: r.rank, fencerId: r.fencerId, source: 'pool' }))
   } else {
