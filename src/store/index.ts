@@ -39,6 +39,7 @@ interface AppState {
 
   // Stages
   addPoolPhase: (tournamentId: string, contestId: string, name: string, maxScore: number, promotionPercent: number) => Promise<void>
+  removeStage: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
   allocatePoolPhase: (tournamentId: string, contestId: string, stageId: string, poolCount: number) => Promise<void>
   setPoolBoutScore: (tournamentId: string, contestId: string, stageId: string, poolId: string, boutId: string, scoreA: number, scoreB: number) => Promise<void>
   setPoolBoutAbsent: (tournamentId: string, contestId: string, stageId: string, poolId: string, boutId: string, absentSide: 'A' | 'B') => Promise<void>
@@ -315,6 +316,17 @@ export const useStore = create<AppState>((set, get) => ({
       results: [],
     }
     const updated = mutateContest(t, contestId, c => ({ ...c, stages: [...c.stages, phase] }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
+  removeStage: async (tournamentId, contestId, stageId) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      stages: c.stages.filter(s => s.id !== stageId),
+    }))
     await saveTournament(updated)
     set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
   },

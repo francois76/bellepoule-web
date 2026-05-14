@@ -63,8 +63,9 @@ body {
   min-width: 26px;
 }
 
+/* ── Pool sheet global ─────────────────────────────────────── */
 .pool-sheet {
-  padding: 8px 0;
+  padding: 6px 0;
 }
 .pool-sheet + .pool-sheet {
   margin-top: 1.5rem;
@@ -73,25 +74,23 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 6px;
+  gap: 8px;
+  margin-bottom: 5px;
   flex-wrap: wrap;
 }
-.pool-sheet-title {
-  flex: 1;
-}
+.pool-sheet-title { flex: 1; }
 .pool-sheet-title h3 {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
-  margin: 0 0 2px;
+  margin: 0 0 1px;
 }
 .pool-sheet-competition {
-  font-size: 11px;
+  font-size: 9.5px;
   color: #333;
   margin: 0 0 1px;
 }
 .pool-sheet-meta {
-  font-size: 10px;
+  font-size: 9px;
   color: #666;
   margin: 0;
 }
@@ -99,52 +98,149 @@ body {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 2px;
-  font-size: 10px;
+  gap: 1px;
+  font-size: 9px;
   color: #333;
 }
-.pool-sheet-referee {
-  white-space: nowrap;
+.pool-sheet-referee { white-space: nowrap; }
+.pool-sheet-referee-name { font-weight: 600; }
+
+/* ── Two-column section: fencer list (left) + signatures (right) */
+.pool-sheet-top {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 6px;
 }
-.pool-sheet-referee-name {
-  font-weight: 600;
+.pool-sheet-top .pool-fencer-list {
+  flex: 1 1 55%;
+}
+.pool-sheet-top .pool-sheet-signatures {
+  flex: 1 1 42%;
+  margin-top: 0;
+  border-top: none;
+  padding-top: 0;
 }
 
-/* Signature zone at the bottom of each pool sheet */
+/* ── Fencer list ───────────────────────────────────────────── */
+.pool-fencer-list {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9.5px;
+}
+.pool-fencer-list th {
+  background: #1e3a5f;
+  color: white;
+  padding: 2px 4px;
+  text-align: left;
+  font-weight: 600;
+}
+.pool-fencer-list td {
+  padding: 2px 4px;
+  border: 1px solid #ccc;
+  line-height: 1.3;
+}
+.pool-fencer-list .pfl-num {
+  width: 22px;
+  text-align: center;
+  font-weight: 700;
+}
+.pool-fencer-list .pfl-name { font-weight: 500; }
+.pool-fencer-list .pfl-club { color: #555; }
+
+/* ── Bout list ─────────────────────────────────────────────── */
+.pool-bout-list {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9.5px;
+}
+.pool-bout-list th {
+  background: #1e3a5f;
+  color: white;
+  padding: 2px 4px;
+  text-align: left;
+  font-weight: 600;
+}
+.pool-bout-list td {
+  padding: 2px 4px;
+  border: 1px solid #ccc;
+  vertical-align: middle;
+  line-height: 1.3;
+}
+.pool-bout-list .pbl-num {
+  width: 30px;
+  text-align: center;
+  font-weight: 700;
+  color: #333;
+}
+.pool-bout-list .pbl-fencer { width: 37%; }
+.pool-bout-list .pbl-fencer-a { text-align: right; }
+.pool-bout-list .pbl-fencer-b { text-align: left; }
+.pool-bout-list .pbl-n {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  line-height: 13px;
+  text-align: center;
+  background: #1e3a5f;
+  color: white;
+  border-radius: 50%;
+  font-size: 8px;
+  font-weight: 700;
+  margin-right: 2px;
+}
+.pool-bout-list .pbl-score {
+  text-align: center;
+  white-space: nowrap;
+}
+.score-box {
+  display: inline-block;
+  width: 24px;
+  height: 14px;
+  border: 1.5px solid #444;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+.score-sep {
+  display: inline-block;
+  margin: 0 3px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+/* ── Signature zone ────────────────────────────────────────── */
 .pool-sheet-signatures {
-  margin-top: 12px;
   border-top: 1px solid #ccc;
-  padding-top: 6px;
+  padding-top: 4px;
 }
 .pool-sheet-signatures-title {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
   color: #444;
-  margin: 0 0 4px;
+  margin: 0 0 3px;
 }
 .pool-sheet-signatures table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 10px;
+  font-size: 9px;
 }
 .pool-sheet-signatures td {
-  padding: 3px 4px;
+  padding: 2px 3px;
   border: 1px solid #bbb;
   vertical-align: middle;
+  line-height: 1.3;
 }
 .pool-sheet-signatures .sig-num {
-  width: 28px;
+  width: 22px;
   text-align: center;
   font-weight: 600;
   color: #333;
 }
 .pool-sheet-signatures .sig-name {
-  width: 35%;
   color: #222;
 }
 .pool-sheet-signatures .sig-line {
-  /* empty cell for handwritten signature */
-  min-width: 120px;
+  min-width: 60px;
 }
 .pool-sheet-signatures .sig-ref td {
   background: #f0f0f0;

@@ -337,26 +337,91 @@ function PoolScoreSheet({ pool, stage, participantMap, contest, tournament, refe
     }
   })
 
-  const resultsMap = Object.fromEntries(
-    stage.results
-      .filter(r => pool.fencerIds.includes(r.fencerId))
-      .map(r => [r.fencerId, r])
-  )
 
-  function getCellContent(rowId: string, colId: string): string {
-    const bout = pool.bouts.find(b =>
-      (b.fencerAId === rowId && b.fencerBId === colId) ||
-      (b.fencerBId === rowId && b.fencerAId === colId)
+  // ── Poule fermée : grille de résultats complète ──────────────
+  if (stage.status === 'done') {
+    const resultsMap = Object.fromEntries(
+      stage.results
+        .filter(r => pool.fencerIds.includes(r.fencerId))
+        .map(r => [r.fencerId, r])
     )
-    if (!bout || bout.scoreA === undefined) return ''
-    if (bout.fencerAId === rowId) {
-      return `${bout.resultA === 'V' ? 'V' : 'D'}${bout.scoreA}`
+
+    function getCellContent(rowId: string, colId: string): string {
+      const bout = pool.bouts.find(b =>
+        (b.fencerAId === rowId && b.fencerBId === colId) ||
+        (b.fencerBId === rowId && b.fencerAId === colId)
+      )
+      if (!bout || bout.scoreA === undefined) return ''
+      if (bout.fencerAId === rowId) {
+        return `${bout.resultA === 'V' ? 'V' : 'D'}${bout.scoreA}`
+      }
+      return `${bout.resultB === 'V' ? 'V' : 'D'}${bout.scoreB}`
     }
-    return `${bout.resultB === 'V' ? 'V' : 'D'}${bout.scoreB}`
+
+    return (
+      <div className="pool-sheet">
+        <div className="pool-sheet-header">
+          <div className="pool-sheet-title">
+            <h3>Poule {pool.number} — {stage.name}</h3>
+            <p className="pool-sheet-competition">{contest.name} · {fullLabel}</p>
+            {(dateLabel || locationLabel) && (
+              <p className="pool-sheet-meta">{[dateLabel, locationLabel].filter(Boolean).join(' · ')}</p>
+            )}
+          </div>
+          <div className="pool-sheet-meta-right">
+            {pool.piste && <span>Piste {pool.piste}</span>}
+            <span className="pool-sheet-referee">Arbitre : <span className="pool-sheet-referee-name">{refName || '________________________'}</span></span>
+          </div>
+        </div>
+        <div className="pool-grid-scroll">
+          <table className="pool-grid">
+            <thead>
+              <tr>
+                <th>N°</th>
+                <th className="pg-name">Nom</th>
+                {fencers.map(f => <th key={f.id}>{f.num}</th>)}
+                <th>V</th>
+                <th>M</th>
+                <th>TD</th>
+                <th>TR</th>
+                <th>Ind.</th>
+                <th>Rang</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fencers.map((rowF, rowIdx) => {
+                const result = resultsMap[rowF.id]
+                return (
+                  <tr key={rowF.id}>
+                    <td>{rowF.num}</td>
+                    <td className="pg-name" style={{ textAlign: 'left' }}>
+                      {rowF.name}{rowF.club ? ` (${rowF.club})` : ''}
+                    </td>
+                    {fencers.map((colF, colIdx) => (
+                      rowIdx === colIdx
+                        ? <td key={colF.id} className="pg-x">&nbsp;</td>
+                        : <td key={colF.id}>{getCellContent(rowF.id, colF.id)}</td>
+                    ))}
+                    <td>{result?.victories ?? ''}</td>
+                    <td>{result?.bouts ?? ''}</td>
+                    <td>{result?.touchesScored ?? ''}</td>
+                    <td>{result?.touchesReceived ?? ''}</td>
+                    <td>{result ? (result.index >= 0 ? `+${result.index}` : String(result.index)) : ''}</td>
+                    <td>{result?.rank ?? ''}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
   }
 
+  // ── Poule ouverte : format liste (à remplir à la main) ───────
   return (
     <div className="pool-sheet">
+      {/* En-tête */}
       <div className="pool-sheet-header">
         <div className="pool-sheet-title">
           <h3>Poule {pool.number} — {stage.name}</h3>
@@ -366,74 +431,86 @@ function PoolScoreSheet({ pool, stage, participantMap, contest, tournament, refe
           )}
         </div>
         <div className="pool-sheet-meta-right">
-          {pool.piste && <span>Piste&nbsp;{pool.piste}</span>}
-          <span className="pool-sheet-referee">Arbitre&nbsp;: <span className="pool-sheet-referee-name">{refName || '________________________'}</span></span>
+          {pool.piste && <span>Piste {pool.piste}</span>}
+          <span className="pool-sheet-referee">Arbitre : <span className="pool-sheet-referee-name">{refName || '________________________'}</span></span>
         </div>
       </div>
-      <div className="pool-grid-scroll">
-        <table className="pool-grid">
+
+      {/* Ligne du haut : liste des tireurs (gauche) + signatures (droite) */}
+      <div className="pool-sheet-top">
+        <table className="pool-fencer-list">
           <thead>
             <tr>
               <th>N°</th>
-              <th className="pg-name">Nom</th>
-              {fencers.map(f => <th key={f.id}>{f.num}</th>)}
-              <th>V</th>
-              <th>M</th>
-              <th>TD</th>
-              <th>TR</th>
-              <th>Ind.</th>
-              <th>Rang</th>
+              <th>{contest.isTeamEvent ? 'Équipe' : 'Tireur'}</th>
+              <th>Club / Nation</th>
             </tr>
           </thead>
           <tbody>
-            {fencers.map((rowF, rowIdx) => {
-              const result = resultsMap[rowF.id]
-              return (
-                <tr key={rowF.id}>
-                  <td>{rowF.num}</td>
-                  <td className="pg-name" style={{ textAlign: 'left' }}>
-                    {rowF.name}{rowF.club ? ` (${rowF.club})` : ''}
-                  </td>
-                  {fencers.map((colF, colIdx) => (
-                    rowIdx === colIdx
-                      ? <td key={colF.id} className="pg-x">&nbsp;</td>
-                      : <td key={colF.id}>{getCellContent(rowF.id, colF.id)}</td>
-                  ))}
-                  <td>{result?.victories ?? ''}</td>
-                  <td>{result?.bouts ?? ''}</td>
-                  <td>{result?.touchesScored ?? ''}</td>
-                  <td>{result?.touchesReceived ?? ''}</td>
-                  <td>{result ? (result.index >= 0 ? `+${result.index}` : String(result.index)) : ''}</td>
-                  <td>{result?.rank ?? ''}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Zone de signatures : arbitre + chaque tireur (poules ouvertes uniquement) */}
-      {stage.status === 'running' && (
-      <div className="pool-sheet-signatures">
-        <p className="pool-sheet-signatures-title">Signatures des tireurs et de l’arbitre :</p>
-        <table>
-          <tbody>
-            <tr className="sig-ref">
-              <td className="sig-num">Arb.</td>
-              <td className="sig-name">{refName || '________________________'}</td>
-              <td className="sig-line"></td>
-            </tr>
             {fencers.map(f => (
               <tr key={f.id}>
-                <td className="sig-num">{f.num}</td>
-                <td className="sig-name">{f.name}</td>
-                <td className="sig-line"></td>
+                <td className="pfl-num">{f.num}</td>
+                <td className="pfl-name">{f.name}</td>
+                <td className="pfl-club">{f.club}</td>
               </tr>
             ))}
           </tbody>
         </table>
+
+        <div className="pool-sheet-signatures">
+          <p className="pool-sheet-signatures-title">Signatures des tireurs et de l’arbitre :</p>
+          <table>
+            <tbody>
+              <tr className="sig-ref">
+                <td className="sig-num">Arb.</td>
+                <td className="sig-name">{refName || '________________________'}</td>
+                <td className="sig-line"></td>
+              </tr>
+              {fencers.map(f => (
+                <tr key={f.id}>
+                  <td className="sig-num">{f.num}</td>
+                  <td className="sig-name">{f.name}</td>
+                  <td className="sig-line"></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-      )}
+
+      {/* Liste des matchs */}
+      <table className="pool-bout-list">
+        <thead>
+          <tr>
+            <th className="pbl-num">Match</th>
+            <th className="pbl-fencer">{contest.isTeamEvent ? 'Équipe' : 'Tireur'}</th>
+            <th className="pbl-score">Score</th>
+            <th className="pbl-fencer">{contest.isTeamEvent ? 'Équipe' : 'Tireur'}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {pool.bouts.map((bout, idx) => {
+            const fA = fencers.find(f => f.id === bout.fencerAId)
+            const fB = fencers.find(f => f.id === bout.fencerBId)
+            return (
+              <tr key={idx}>
+                <td className="pbl-num">{idx + 1}</td>
+                <td className="pbl-fencer pbl-fencer-a">
+                  <span className="pbl-n">{fA?.num}</span>{' '}{fA?.name}
+                </td>
+                <td className="pbl-score">
+                  <span className="score-box"></span>
+                  <span className="score-sep">–</span>
+                  <span className="score-box"></span>
+                </td>
+                <td className="pbl-fencer pbl-fencer-b">
+                  <span className="pbl-n">{fB?.num}</span>{' '}{fB?.name}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }

@@ -31,7 +31,7 @@ function scoreHint(category: string | undefined, phase: 'pool' | 'tableau'): str
 
 export default function ContestPage() {
   const { tournamentId, contestId } = useParams<{ tournamentId: string; contestId: string }>()
-  const { tournaments, addPoolPhase, addTableauPhase, addBarragePhase, updateTournament: _ut } = useStore()
+  const { tournaments, addPoolPhase, addTableauPhase, addBarragePhase, updateTournament: _ut, removeStage } = useStore()
   const navigate = useNavigate()
   const tournament = tournaments.find(t => t.id === tournamentId)
   const contest = tournament?.contests.find(c => c.id === contestId)
@@ -177,15 +177,29 @@ export default function ContestPage() {
           <div className="space-y-2">
             {contest.stages.map(stage => (
               <div key={stage.id}
-                className="card flex items-center justify-between hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => navigateToStage(stage)}>
-                <div>
+                className="card flex items-center justify-between hover:shadow-md transition-shadow">
+                <div className="flex items-center gap-2 flex-1 cursor-pointer"
+                  onClick={() => navigateToStage(stage)}>
                   <span className="font-medium text-gray-800">{stage.name}</span>
-                  <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
                     {stageLabel[stage.type] ?? stage.type}
                   </span>
                 </div>
-                <StatusBadge status={stage.status} />
+                <div className="flex items-center gap-2">
+                  <StatusBadge status={stage.status} />
+                  {stage.status !== 'done' && (
+                    <button
+                      className="text-gray-300 hover:text-red-500 transition-colors ml-2 text-lg leading-none"
+                      title="Supprimer cette phase"
+                      onClick={e => {
+                        e.stopPropagation()
+                        if (confirm(`Supprimer la phase « ${stage.name} » ? Cette action est irréversible.`)) {
+                          removeStage(tournamentId!, contestId!, stage.id)
+                        }
+                      }}
+                    >✕</button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
