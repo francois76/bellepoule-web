@@ -48,7 +48,9 @@ export default function ContestPage() {
 
   if (!tournament || !contest) return <div className="text-red-500">Compétition introuvable</div>
 
-  const presentCount = (contest?.fencers ?? []).filter(f => f.present).length
+  const presentCount = contest.isTeamEvent
+    ? (contest.teams ?? []).filter(t => t.present !== false).length
+    : (contest?.fencers ?? []).filter(f => f.present).length
 
   function openPoolModal() {
     const n = contest!.stages.filter(s => s.type === 'pool').length + 1
@@ -69,7 +71,11 @@ export default function ContestPage() {
 
   function openTableauModal() {
     const lastPool = [...(contest!.stages ?? [])].reverse().find(s => s.type === 'pool') as PoolPhase | undefined
-    const qualifiedCount = lastPool?.results?.filter(r => r.status === 'qualified').length ?? 0
+    // Count only qualified participants who are still present (haven't declared forfait)
+    const qualifiedIds = lastPool?.results?.filter(r => r.status === 'qualified').map(r => r.fencerId) ?? []
+    const qualifiedCount = contest!.isTeamEvent
+      ? qualifiedIds.filter(id => (contest!.teams ?? []).find(t => t.id === id)?.present !== false).length
+      : qualifiedIds.filter(id => contest!.fencers.find(f => f.id === id)?.present !== false).length
     let autoSize: number = qualifiedCount > 0 ? 4 : 64
     if (qualifiedCount > 0) { while (autoSize < qualifiedCount) autoSize *= 2 }
     setTableauAutoSize(qualifiedCount > 0 ? autoSize : null)

@@ -323,7 +323,7 @@ export const useStore = create<AppState>((set, get) => ({
 
     // For team events, pools contain teams (not individual fencers)
     const participants = contest.isTeamEvent
-      ? contest.teams.filter(team => team.present).map(team => ({ id: team.id, initialRank: team.initialRank }))
+      ? contest.teams.filter(team => team.present !== false).map(team => ({ id: team.id, initialRank: team.initialRank }))
       : contest.fencers.filter(f => f.present)
 
     const pools = allocatePools(participants, poolCount, seedOrder)
@@ -674,15 +674,23 @@ function computePoolResults(phase: PoolPhase): PoolStageResult[] {
 function getSeedOrder(contest: Contest): string[] {
   const lastPool = [...contest.stages].reverse().find(s => s.type === 'pool') as PoolPhase | undefined
   if (lastPool && lastPool.results.length > 0) {
-    return lastPool.results
+    const qualifiedIds = lastPool.results
       .filter(r => r.status === 'qualified')
       .sort((a, b) => a.rank - b.rank)
       .map(r => r.fencerId)
+    // Exclude participants who have declared forfait (present = false) since the pool was locked
+    if (contest.isTeamEvent) {
+      const presentTeamIds = new Set(contest.teams.filter(t => t.present !== false).map(t => t.id))
+      return qualifiedIds.filter(id => presentTeamIds.has(id))
+    } else {
+      const presentFencerIds = new Set(contest.fencers.filter(f => f.present).map(f => f.id))
+      return qualifiedIds.filter(id => presentFencerIds.has(id))
+    }
   }
   // Fallback: present participants sorted by initialRank
   if (contest.isTeamEvent) {
     return contest.teams
-      .filter(t => t.present)
+      .filter(t => t.present !== false)
       .sort((a, b) => (a.initialRank ?? 99999) - (b.initialRank ?? 99999))
       .map(t => t.id)
   }

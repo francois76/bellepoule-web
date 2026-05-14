@@ -77,6 +77,10 @@ export default function CheckinPage() {
 
   function handleSetAll(present: boolean) {
     contest!.fencers.forEach(f => setPresence(tournamentId!, contestId!, f.id, present))
+    // For team events, also set team-level presence
+    if (contest!.isTeamEvent) {
+      contest!.teams.forEach(t => setTeamPresence(tournamentId!, contestId!, t.id, present))
+    }
   }
 
   async function handleInjectFakers() {
@@ -113,7 +117,7 @@ export default function CheckinPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800">Checkin</h1>
         {contest.isTeamEvent
-          ? <span className="text-lg font-semibold text-blue-700">{contest.teams.filter(t => t.present).length} / {contest.teams.length} équipes présentes</span>
+          ? <span className="text-lg font-semibold text-blue-700">{contest.teams.filter(t => t.present !== false).length} / {contest.teams.length} équipes présentes</span>
           : <span className="text-lg font-semibold text-blue-700">{presentCount} / {contest.fencers.length} présents</span>
         }
       </div>
@@ -153,7 +157,7 @@ export default function CheckinPage() {
                 return (
                   <tr key={team.id} className={`border-b border-gray-100 ${idx % 2 === 0 ? '' : 'bg-gray-50'} ${!team.present ? 'opacity-50' : ''}`}>
                     <td className="px-4 py-2">
-                      <input type="checkbox" checked={team.present}
+                      <input type="checkbox" checked={team.present !== false}
                         onChange={e => setTeamPresence(tournamentId!, contestId!, team.id, e.target.checked)}
                         className="w-4 h-4 accent-blue-600" />
                     </td>
