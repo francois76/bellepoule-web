@@ -67,6 +67,10 @@ export default function ContestPage() {
       parseInt(poolForm.promotionPercent) || 75,
     )
     setPoolModal(false)
+    const { tournaments: updated } = useStore.getState()
+    const c = updated.find(t => t.id === tournamentId)?.contests.find(c => c.id === contestId)
+    const stage = c?.stages.at(-1)
+    if (stage) navigateToStage(stage)
   }
 
   function openTableauModal() {
@@ -94,6 +98,10 @@ export default function ContestPage() {
       tableauForm.hasThirdPlace,
     )
     setTableauModal(false)
+    const { tournaments: updated } = useStore.getState()
+    const c = updated.find(t => t.id === tournamentId)?.contests.find(c => c.id === contestId)
+    const stage = c?.stages.at(-1)
+    if (stage) navigateToStage(stage)
   }
 
   function openBarrageModal() {
@@ -110,6 +118,10 @@ export default function ContestPage() {
       parseInt(barrageForm.maxScore) || 5,
     )
     setBarrageModal(false)
+    const { tournaments: updated } = useStore.getState()
+    const c = updated.find(t => t.id === tournamentId)?.contests.find(c => c.id === contestId)
+    const stage = c?.stages.at(-1)
+    if (stage) navigateToStage(stage)
   }
 
   function navigateToStage(stage: { id: string; type: string }) {
