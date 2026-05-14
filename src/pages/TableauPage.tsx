@@ -271,16 +271,16 @@ function MatchSheetsPrint({ stage, fencerName, roundFilter }: PrintProps & { rou
 
   const touchCount = Math.min(stage.maxScore, 15)
 
-  // Group into pages of 4 (2 rows × 2 cols)
+  // Group into pages of 6 (3 rows × 2 cols)
   const pages: typeof matchBouts[] = []
-  for (let i = 0; i < matchBouts.length; i += 4) {
-    pages.push(matchBouts.slice(i, i + 4))
+  for (let i = 0; i < matchBouts.length; i += 6) {
+    pages.push(matchBouts.slice(i, i + 6))
   }
 
   return (
     <div>
       {pages.map((page, pageIdx) => {
-        const rows = [page.slice(0, 2), page.slice(2, 4)].filter(r => r.length > 0)
+        const rows = [page.slice(0, 2), page.slice(2, 4), page.slice(4, 6)].filter(r => r.length > 0)
         return (
           // Block container — break-after:page works on block but not on grid in Chrome
           <div key={pageIdx} className="match-print-page">
