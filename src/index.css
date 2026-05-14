@@ -253,11 +253,11 @@ body {
 }
 
 /* ── Match score sheets (tableau ouvert) ───────────────────────────────── */
-/* Block container per page — grid/flex children cannot break pages in Chrome */
+/* Block container per page — break-after:page forces a page break in Chrome */
 .match-print-page {
   display: block;
   break-after: page;
-  page-break-after: always; /* old property for Chrome compatibility */
+  page-break-after: always;
 }
 .match-print-page:last-child {
   break-after: auto;
@@ -373,6 +373,16 @@ body {
 @media print {
   @page { margin: 1.5cm; size: A4 portrait; }
 
+  /* Reset the full ancestor chain — overflow:hidden anywhere blocks Chrome page breaks */
+  body,
+  #root,
+  #root > div {
+    overflow: visible !important;
+    height: auto !important;
+    display: block !important;
+    background: white !important;
+  }
+
   /* Hide all navigation and interactive chrome */
   header, footer { display: none !important; }
   .print\:hidden { display: none !important; }
@@ -411,12 +421,14 @@ body {
     background: #444 !important;
   }
 
-  /* Layout: remove overflow-auto and max-width constraints that create scrollbars in print */
+  /* Layout: remove overflow-auto and max-width constraints */
   main {
     overflow: visible !important;
     max-width: 100% !important;
     width: 100% !important;
     padding: 0 !important;
+    height: auto !important;
+    flex: none !important;
   }
 
   /* Extra bottom padding to prevent content from overlapping browser footer */

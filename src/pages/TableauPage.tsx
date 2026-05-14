@@ -85,7 +85,8 @@ export default function TableauPage() {
   return (
     <div className="space-y-5">
       {/* Override @page to landscape for tableau printing, with extra bottom margin for browser footer */}
-      <style>{`@media print { @page { size: A4 landscape; margin: 1.2cm 1cm 1.8cm 1cm; } }`}</style>
+      {/* @page must NOT be inside @media print — that's invalid CSS and Chrome ignores it */}
+      <style>{`@page { size: A4 landscape; margin: 1.5cm 1cm 2.5cm 1cm; }`}</style>
       {/* Breadcrumb */}
       <div className="print:hidden flex items-center gap-2 text-sm text-gray-500 flex-wrap">
         <Link to="/" className="hover:text-blue-600">Tournois</Link>
