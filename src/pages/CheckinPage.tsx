@@ -17,6 +17,8 @@ export default function CheckinPage() {
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ lastName: '', firstName: '', gender: 'M' as 'M' | 'F', club: '', birthYear: '', initialRank: '' })
   const [devCount, setDevCount] = useState('12')
+  const [fencerSort, setFencerSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'lastName', dir: 'asc' })
+  const [teamSort, setTeamSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'name', dir: 'asc' })
 
   if (!tournament || !contest) return <div className="text-red-500">Compétition introuvable</div>
 
@@ -24,6 +26,50 @@ export default function CheckinPage() {
     `${f.lastName} ${f.firstName} ${f.club ?? ''}`.toLowerCase().includes(filter.toLowerCase())
   )
   const presentCount = contest.fencers.filter(f => f.present).length
+
+  function toggleFencerSort(key: string) {
+    setFencerSort(prev => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' })
+  }
+  function toggleTeamSort(key: string) {
+    setTeamSort(prev => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' })
+  }
+  function sortArrow(col: string, sort: { key: string; dir: 'asc' | 'desc' }) {
+    if (sort.key !== col) return <span className="ml-1 text-gray-300">⇅</span>
+    return <span className="ml-1">{sort.dir === 'asc' ? '↑' : '↓'}</span>
+  }
+
+  function cmp<T>(a: T, b: T, dir: 'asc' | 'desc') {
+    if (a == null && b == null) return 0
+    if (a == null) return 1
+    if (b == null) return -1
+    const r = a < b ? -1 : a > b ? 1 : 0
+    return dir === 'asc' ? r : -r
+  }
+
+  const sortedFencers = [...filtered].sort((a, b) => {
+    const { key, dir } = fencerSort
+    if (key === 'present') return cmp(a.present ? 0 : 1, b.present ? 0 : 1, dir)
+    if (key === 'lastName') return cmp(a.lastName.toUpperCase(), b.lastName.toUpperCase(), dir)
+    if (key === 'firstName') return cmp(a.firstName, b.firstName, dir)
+    if (key === 'club') return cmp(a.club ?? '', b.club ?? '', dir)
+    if (key === 'birthYear') return cmp(a.birthYear, b.birthYear, dir)
+    if (key === 'initialRank') return cmp(a.initialRank, b.initialRank, dir)
+    return 0
+  })
+
+  const sortedTeams = [...contest.teams].sort((a, b) => {
+    const { key, dir } = teamSort
+    if (key === 'present') return cmp(a.present !== false ? 0 : 1, b.present !== false ? 0 : 1, dir)
+    if (key === 'name') return cmp(a.name, b.name, dir)
+    if (key === 'club') return cmp(a.club ?? '', b.club ?? '', dir)
+    if (key === 'initialRank') return cmp(a.initialRank, b.initialRank, dir)
+    if (key === 'presentMembers') {
+      const pA = a.fencerIds.map(id => contest.fencers.find(f => f.id === id)).filter(Boolean).filter((f: any) => f.present).length
+      const pB = b.fencerIds.map(id => contest.fencers.find(f => f.id === id)).filter(Boolean).filter((f: any) => f.present).length
+      return cmp(pA, pB, dir)
+    }
+    return 0
+  })
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
@@ -98,9 +144,9 @@ export default function CheckinPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="flex flex-col h-full gap-5">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-gray-500">
+      <div className="shrink-0 flex items-center gap-2 text-sm text-gray-500">
         <Link to="/" className="hover:text-blue-600">Tournois</Link>
         <span>/</span>
         <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>
@@ -110,7 +156,7 @@ export default function CheckinPage() {
         <span className="text-gray-800 font-medium">Checkin</span>
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="shrink-0 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800">Checkin</h1>
         {contest.isTeamEvent
           ? <span className="text-lg font-semibold text-blue-700">{contest.teams.filter(t => t.present !== false).length} / {contest.teams.length} équipes présentes</span>
@@ -120,7 +166,7 @@ export default function CheckinPage() {
 
       {/* Teams section — team events only */}
       {contest.isTeamEvent && contest.teams.length > 0 && (
-        <div className="card p-0 overflow-hidden">
+        <div className="shrink-0 card p-0 overflow-hidden">
           <div className="px-4 py-3 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
             <h2 className="font-semibold text-blue-800">Équipes</h2>
             <div className="flex gap-2">
@@ -134,20 +180,21 @@ export default function CheckinPage() {
               </button>
             </div>
           </div>
+          <div className="overflow-y-auto max-h-52">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
               <tr>
-                <th className="px-4 py-2 text-left font-medium text-gray-600">Présente</th>
-                <th className="px-4 py-2 text-left font-medium text-gray-600">Équipe</th>
-                <th className="px-4 py-2 text-left font-medium text-gray-600 hidden sm:table-cell">Club</th>
-                <th className="px-4 py-2 text-left font-medium text-gray-600">Membres présents</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleTeamSort('present')}>Présente{sortArrow('present', teamSort)}</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleTeamSort('name')}>Équipe{sortArrow('name', teamSort)}</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-600 hidden sm:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleTeamSort('club')}>Club{sortArrow('club', teamSort)}</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleTeamSort('presentMembers')}>Membres présents{sortArrow('presentMembers', teamSort)}</th>
                 {contest.teams.some(t => t.initialRank !== undefined) && (
-                  <th className="px-4 py-2 text-left font-medium text-gray-600 hidden md:table-cell">Rang</th>
+                  <th className="px-4 py-2 text-left font-medium text-gray-600 hidden md:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleTeamSort('initialRank')}>Rang{sortArrow('initialRank', teamSort)}</th>
                 )}
               </tr>
             </thead>
             <tbody>
-              {contest.teams.map((team, idx) => {
+              {sortedTeams.map((team, idx) => {
                 const memberFencers = team.fencerIds.map(id => contest.fencers.find(f => f.id === id)).filter(Boolean) as import('../types').Fencer[]
                 const presentMembers = memberFencers.filter(f => f.present).length
                 return (
@@ -173,11 +220,12 @@ export default function CheckinPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
       {/* Toolbar */}
-      <div className="flex flex-wrap gap-2">
+      <div className="shrink-0 flex flex-wrap gap-2">
         <input className="input flex-1 min-w-48"
           placeholder={contest.isTeamEvent ? 'Rechercher un membre…' : 'Rechercher un tireur…'}
           value={filter} onChange={e => setFilter(e.target.value)} />
@@ -202,7 +250,7 @@ export default function CheckinPage() {
       </div>
 
       {adding && (
-        <form onSubmit={handleAdd} className="card space-y-3">
+        <form onSubmit={handleAdd} className="shrink-0 card space-y-3">
           <h2 className="font-semibold text-gray-700">Nouveau tireur</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div>
@@ -241,29 +289,30 @@ export default function CheckinPage() {
       )}
 
       {/* Fencer list */}
-      <div className="card p-0 overflow-hidden">
+      <div className="flex-1 min-h-0 card p-0 overflow-hidden flex flex-col">
         {filtered.length === 0 ? (
-          <p className="text-center text-gray-400 py-10">
+          <p className="text-center text-gray-400 py-10 m-auto">
             {contest.fencers.length === 0
               ? (contest.isTeamEvent ? 'Aucun membre inscrit' : 'Aucun tireur inscrit')
               : 'Aucun résultat pour cette recherche'}
           </p>
         ) : (
+          <div className="flex-1 min-h-0 overflow-y-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
               <tr>
-                <th className="px-4 py-2 text-left font-medium text-gray-600">Présent</th>
-                <th className="px-4 py-2 text-left font-medium text-gray-600">Nom</th>
-                <th className="px-4 py-2 text-left font-medium text-gray-600">Prénom</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('present')}>Présent{sortArrow('present', fencerSort)}</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('lastName')}>Nom{sortArrow('lastName', fencerSort)}</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('firstName')}>Prénom{sortArrow('firstName', fencerSort)}</th>
                 {contest.isTeamEvent && <th className="px-4 py-2 text-left font-medium text-gray-600 hidden sm:table-cell">Équipe</th>}
-                <th className="px-4 py-2 text-left font-medium text-gray-600 hidden sm:table-cell">Club</th>
-                <th className="px-4 py-2 text-left font-medium text-gray-600 hidden md:table-cell">Né</th>
-                <th className="px-4 py-2 text-left font-medium text-gray-600 hidden md:table-cell">Rang</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-600 hidden sm:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('club')}>Club{sortArrow('club', fencerSort)}</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-600 hidden md:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('birthYear')}>Né{sortArrow('birthYear', fencerSort)}</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-600 hidden md:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('initialRank')}>Rang{sortArrow('initialRank', fencerSort)}</th>
                 <th className="px-4 py-2"></th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((f, idx) => {
+              {sortedFencers.map((f, idx) => {
                 const team = contest.isTeamEvent ? contest.teams.find(t => t.fencerIds.includes(f.id)) : undefined
                 return (
                   <tr key={f.id} className={`border-b border-gray-100 ${idx % 2 === 0 ? '' : 'bg-gray-50'} ${!f.present ? 'opacity-50' : ''}`}>
@@ -287,6 +336,7 @@ export default function CheckinPage() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>
