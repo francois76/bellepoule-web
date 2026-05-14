@@ -2,6 +2,9 @@ import { useParams, Link } from 'react-router-dom'
 import { useStore } from '../store'
 import type { PoolPhase, TableauPhase } from '../types'
 
+const WEAPON_LABEL: Record<string, string> = { epee: 'Épée', foil: 'Fleuret', sabre: 'Sabre' }
+const GENDER_LABEL: Record<string, string> = { men: 'Messieurs', women: 'Dames', mixed: 'Mixte' }
+
 export default function ClassificationPage() {
   const { tournamentId, contestId } = useParams<{ tournamentId: string; contestId: string }>()
   const { tournaments } = useStore()
@@ -67,9 +70,34 @@ export default function ClassificationPage() {
         <span className="text-gray-800 font-medium">Classement</span>
       </div>
 
-      <div className="flex items-center justify-between">
+      {/* En-tête d'impression — visible uniquement à l'impression */}
+      <div className="hidden print:block mb-4 border-b border-gray-300 pb-3">
+        <h1 className="text-xl font-bold">Classement général — {contest.name}</h1>
+        <p className="text-sm mt-1">
+          {WEAPON_LABEL[contest.weapon] ?? contest.weapon}
+          {' '}{GENDER_LABEL[contest.gender] ?? contest.gender}
+          {contest.category ? ` · ${contest.category}` : ''}
+        </p>
+        {(contest.organizer || tournament.organizer) && (
+          <p className="text-xs text-gray-600 mt-0.5">
+            Organisateur&nbsp;: {contest.organizer ?? tournament.organizer}
+          </p>
+        )}
+        {(contest.location || tournament.location || contest.date || tournament.startDate) && (
+          <p className="text-xs text-gray-600 mt-0.5">
+            {[
+              contest.location ?? tournament.location,
+              (contest.date ?? tournament.startDate)
+                ? new Date((contest.date ?? tournament.startDate)!).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                : undefined,
+            ].filter(Boolean).join(' · ')}
+          </p>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between print:hidden">
         <h1 className="text-2xl font-bold text-gray-800">Classement général — {contest.name}</h1>
-        <button className="btn-secondary print:hidden" onClick={handlePrint}>🖨️ Imprimer</button>
+        <button className="btn-secondary" onClick={handlePrint}>🖨️ Imprimer</button>
       </div>
 
       <div className="card p-0 overflow-hidden print:shadow-none print:border-0">

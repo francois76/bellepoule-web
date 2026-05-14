@@ -69,18 +69,49 @@ body {
 .pool-sheet + .pool-sheet {
   margin-top: 1.5rem;
 }
+.pool-sheet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
 .pool-sheet-title {
-  margin-bottom: 4px;
+  flex: 1;
 }
 .pool-sheet-title h3 {
   font-size: 14px;
   font-weight: 700;
   margin: 0 0 2px;
 }
-.pool-sheet-title p {
+.pool-sheet-competition {
   font-size: 11px;
-  color: #555;
+  color: #333;
+  margin: 0 0 1px;
+}
+.pool-sheet-meta {
+  font-size: 10px;
+  color: #666;
   margin: 0;
+}
+.pool-sheet-meta-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 10px;
+  color: #333;
+}
+.pool-sheet-referee {
+  white-space: nowrap;
+}
+.pool-sheet-referee-name {
+  font-weight: 600;
+}
+.pool-sheet-signature {
+  white-space: nowrap;
+  color: #555;
 }
 
 .pool-grid-scroll {

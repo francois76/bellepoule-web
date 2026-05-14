@@ -38,7 +38,7 @@ export default function TableauPage() {
     if (sa === sb) return
     if (sa < 0 || sb < 0) return
     if (sa > stage.maxScore || sb > stage.maxScore) return
-    if (sa !== stage.maxScore && sb !== stage.maxScore) return
+    // FIE : résultat "à la montre" autorisé, pas besoin que l'un atteigne maxScore
     await setTableauBoutScore(tournamentId!, contestId!, stageId!, boutId, sa, sb)
     setEditingBout(null)
     setScoreA('')
@@ -147,7 +147,7 @@ function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, sco
               if (sa < 0 || sb < 0) return 'Score négatif impossible'
               if (sa > maxScore || sb > maxScore) return `Score max : ${maxScore}`
               if (sa === sb) return 'Égalité impossible en tableau'
-              if (sa !== maxScore && sb !== maxScore) return `Un des scores doit être ${maxScore}`
+              // FIE : victoire à la montre possible si le temps expire (ex. V12-10 en V15)
               return null
             })()
             return (

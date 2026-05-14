@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useStore } from '../store'
-import type { PoolPhase, PoolBout, Pool, Fencer } from '../types'
+import type { PoolPhase, PoolBout, Pool, Fencer, Referee } from '../types'
 
 export default function PoolsPage() {
   const { tournamentId, contestId, stageId } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
@@ -255,7 +255,15 @@ export default function PoolsPage() {
         <div className="pool-sheets-wrapper" style={showSheets ? {} : { display: 'none' }}>
           <h2 className="print:hidden font-semibold text-gray-700 mb-3">Feuilles de poule</h2>
           {stage.pools.map(p => (
-            <PoolScoreSheet key={p.id} pool={p} stage={stage} fencerMap={fencerMap} contestName={contest.name} />
+            <PoolScoreSheet
+              key={p.id}
+              pool={p}
+              stage={stage}
+              fencerMap={fencerMap}
+              contest={contest}
+              tournament={tournament}
+              referees={contest.referees}
+            />
           ))}
         </div>
       )}
@@ -263,12 +271,32 @@ export default function PoolsPage() {
   )
 }
 
-function PoolScoreSheet({ pool, stage, fencerMap, contestName }: {
+const WEAPON_LABEL: Record<string, string> = { epee: 'Épée', foil: 'Fleuret', sabre: 'Sabre' }
+const GENDER_LABEL: Record<string, string> = { men: 'Messieurs', women: 'Dames', mixed: 'Mixte' }
+
+function PoolScoreSheet({ pool, stage, fencerMap, contest, tournament, referees }: {
   pool: Pool
   stage: PoolPhase
   fencerMap: Record<string, Fencer>
-  contestName: string
+  contest: import('../types').Contest
+  tournament: import('../types').Tournament
+  referees: Referee[]
 }) {
+  const referee = pool.refereeId ? referees.find(r => r.id === pool.refereeId) : undefined
+  const refName = referee ? `${referee.lastName.toUpperCase()} ${referee.firstName}` : ''
+
+  const weaponLabel = WEAPON_LABEL[contest.weapon] ?? contest.weapon
+  const genderLabel = GENDER_LABEL[contest.gender] ?? contest.gender
+  const categoryLabel = contest.category ? ` ${contest.category}` : ''
+  const fullLabel = `${weaponLabel} ${genderLabel}${categoryLabel}`
+
+  const dateLabel = contest.date
+    ? new Date(contest.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : tournament.startDate
+      ? new Date(tournament.startDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : ''
+  const locationLabel = contest.location ?? tournament.location ?? ''
+
   const fencers = pool.fencerIds.map((id, idx) => {
     const f = fencerMap[id]
     return {
@@ -299,9 +327,19 @@ function PoolScoreSheet({ pool, stage, fencerMap, contestName }: {
 
   return (
     <div className="pool-sheet">
-      <div className="pool-sheet-title">
-        <h3>Poule {pool.number} — {stage.name}</h3>
-        <p>{contestName}</p>
+      <div className="pool-sheet-header">
+        <div className="pool-sheet-title">
+          <h3>Poule {pool.number} — {stage.name}</h3>
+          <p className="pool-sheet-competition">{contest.name} · {fullLabel}</p>
+          {(dateLabel || locationLabel) && (
+            <p className="pool-sheet-meta">{[dateLabel, locationLabel].filter(Boolean).join(' · ')}</p>
+          )}
+        </div>
+        <div className="pool-sheet-meta-right">
+          {pool.piste && <span>Piste&nbsp;{pool.piste}</span>}
+          <span className="pool-sheet-referee">Arbitre&nbsp;: <span className="pool-sheet-referee-name">{refName || '________________________'}</span></span>
+          <span className="pool-sheet-signature">Signature&nbsp;: ________________________</span>
+        </div>
       </div>
       <div className="pool-grid-scroll">
         <table className="pool-grid">
@@ -373,7 +411,7 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
     if (sa < 0 || sb < 0) return 'Score négatif impossible'
     if (sa > maxScore || sb > maxScore) return `Score max\u00a0: ${maxScore}`
     if (sa === sb) return 'Égalité impossible en poule'
-    if (sa !== maxScore && sb !== maxScore) return `Un des scores doit être ${maxScore}\u00a0(V)`
+    // FIE art. t.93 : résultat "à la montre" autorisé — ex. V4-3 dans une poule à 5
     return null
   })()
 

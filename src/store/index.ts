@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
-import type { Tournament, Contest, Fencer, Referee, Team, PoolPhase, PoolBout, TableauPhase, TableauBout, TableauSize } from '../types'
+import type { Tournament, Contest, Fencer, Referee, Team, PoolPhase, PoolBout, TableauPhase, TableauBout, TableauSize, MatchResult } from '../types'
 import { getAllTournaments, saveTournament, deleteTournament } from '../db'
 import { allocatePools } from '../logic/pools'
 import { buildBracket } from '../logic/tableau'
@@ -318,8 +318,12 @@ export const useStore = create<AppState>((set, get) => ({
               ...p,
               bouts: p.bouts.map(b => {
                 if (b.id !== boutId) return b
-                const resultA = scoreA === poolMaxScore ? 'V' : (scoreA === 0 && scoreB === 0 ? 'A' : 'D')
-                const resultB = scoreB === poolMaxScore ? 'V' : (scoreA === 0 && scoreB === 0 ? 'A' : 'D')
+                // FIE art. t.93 : victoire = atteindre le score max OU avoir
+                // le plus de touches quand le temps expire (résultat "à la montre").
+                // resultA/B dépend uniquement de qui a plus de touches.
+                void poolMaxScore
+                const resultA: MatchResult = scoreA > scoreB ? 'V' : 'D'
+                const resultB: MatchResult = scoreB > scoreA ? 'V' : 'D'
                 return { ...b, scoreA, scoreB, resultA, resultB } as PoolBout
               }),
             }
