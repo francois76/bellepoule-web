@@ -17,10 +17,18 @@ const FIE_ORDER: Record<number, [number, number][]> = {
 }
 
 /**
- * Distribute fencers into pools (snake seeding to balance levels)
+ * Distribute fencers into pools (snake seeding to balance levels).
+ * seedOrder: optional array of fencer IDs in rank order (e.g. from a previous pool round).
+ * When provided, fencers are seeded by their position in seedOrder instead of initialRank.
  */
-export function allocatePools(fencers: Fencer[], poolCount: number): Pool[] {
-  const sorted = [...fencers].sort((a, b) => (a.initialRank ?? 9999) - (b.initialRank ?? 9999))
+export function allocatePools(fencers: Fencer[], poolCount: number, seedOrder?: string[]): Pool[] {
+  let sorted: Fencer[]
+  if (seedOrder && seedOrder.length > 0) {
+    const rankMap = new Map(seedOrder.map((id, i) => [id, i]))
+    sorted = [...fencers].sort((a, b) => (rankMap.get(a.id) ?? 9999) - (rankMap.get(b.id) ?? 9999))
+  } else {
+    sorted = [...fencers].sort((a, b) => (a.initialRank ?? 9999) - (b.initialRank ?? 9999))
+  }
 
   const pools: Pool[] = Array.from({ length: poolCount }, (_, i) => ({
     id: nanoid(),

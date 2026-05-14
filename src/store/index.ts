@@ -297,7 +297,19 @@ export const useStore = create<AppState>((set, get) => ({
     const t = getTournamentOrThrow(tournaments, tournamentId)
     const contest = getContestOrThrow(t, contestId)
     const presentFencers = contest.fencers.filter(f => f.present)
-    const pools = allocatePools(presentFencers, poolCount)
+
+    // If a previous pool phase exists and is done, use its ranking as seeding order
+    // (FIE rule: 2nd pool round seeded from 1st round results, not initial ranking)
+    const stageIdx = contest.stages.findIndex(s => s.id === stageId)
+    const prevPoolPhase = contest.stages
+      .slice(0, stageIdx)
+      .reverse()
+      .find(s => s.type === 'pool' && s.status === 'done') as PoolPhase | undefined
+    const seedOrder = prevPoolPhase
+      ? [...prevPoolPhase.results].sort((a, b) => a.rank - b.rank).map(r => r.fencerId)
+      : undefined
+
+    const pools = allocatePools(presentFencers, poolCount, seedOrder)
     const updated = mutateContest(t, contestId, c => ({
       ...c,
       stages: c.stages.map(s => s.id === stageId && s.type === 'pool'
@@ -620,8 +632,12 @@ function computePoolResults(phase: PoolPhase): PoolStageResult[] {
 
   const entries = Object.values(totals).map(e => ({ ...e, index: e.touchesScored - e.touchesReceived }))
 
+  // FIE t.116 / BellePoule: sort by V/M ratio (‰), then index (TD-TR), then TD
+  // Using integer ratio (×1000) like BellePoule to avoid float precision issues
   entries.sort((a, b) => {
-    if (b.victories !== a.victories) return b.victories - a.victories
+    const ratioA = a.bouts > 0 ? Math.floor(a.victories * 1000 / a.bouts) : 0
+    const ratioB = b.bouts > 0 ? Math.floor(b.victories * 1000 / b.bouts) : 0
+    if (ratioB !== ratioA) return ratioB - ratioA
     if (b.index !== a.index) return b.index - a.index
     return b.touchesScored - a.touchesScored
   })
