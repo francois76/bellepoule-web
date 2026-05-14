@@ -14,10 +14,10 @@ export default function ClassificationPage() {
   if (!tournament || !contest) return <div className="text-red-500">Compétition introuvable</div>
 
   // Unified participant map: team IDs → name/club for team events, fencer IDs for individual events
-  type ParticipantInfo = { name: string; club?: string; country?: string }
+  type ParticipantInfo = { name: string; firstName?: string; club?: string; country?: string }
   const participantMap: Record<string, ParticipantInfo> = contest.isTeamEvent
     ? Object.fromEntries(contest.teams.map(t => [t.id, { name: t.name, club: t.club }]))
-    : Object.fromEntries(contest.fencers.map(f => [f.id, { name: `${f.lastName.toUpperCase()} ${f.firstName}`, club: f.club, country: f.country }]))
+    : Object.fromEntries(contest.fencers.map(f => [f.id, { name: f.lastName.toUpperCase(), firstName: f.firstName, club: f.club, country: f.country }]))
 
   // Build classification: prefer tableau results, then pool results
   const lastTableau = [...contest.stages].reverse().find(s => s.type === 'tableau') as TableauPhase | undefined
@@ -134,8 +134,9 @@ export default function ClassificationPage() {
                     </span>
                   </td>
                   <td className="px-4 py-2 font-medium text-gray-800" colSpan={contest.isTeamEvent ? 2 : 1}>{p?.name ?? '?'}</td>
-                  {!contest.isTeamEvent && <td className="px-4 py-2 text-gray-500 hidden sm:table-cell print:table-cell">{p?.club ?? '—'}</td>}
+                  {!contest.isTeamEvent && <td className="px-4 py-2 text-gray-600">{p?.firstName ?? '—'}</td>}
                   {contest.isTeamEvent && <td className="px-4 py-2 text-gray-500 hidden sm:table-cell print:table-cell">{p?.club ?? '—'}</td>}
+                  {!contest.isTeamEvent && <td className="px-4 py-2 text-gray-500 hidden sm:table-cell print:table-cell">{p?.club ?? '—'}</td>}
                   <td className="px-4 py-2 text-gray-500 hidden md:table-cell print:table-cell">{p?.country ?? '—'}</td>
                 </tr>
               )
