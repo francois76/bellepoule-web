@@ -194,6 +194,13 @@ export default function PoolsPage() {
         <>
           {/* Pool selector tabs - screen only */}
           <div className="print:hidden flex gap-2 flex-wrap">
+            {stage.status === 'done' && stage.results.length > 0 && (
+              <button
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${selectedPool === -1 ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300'}`}
+                onClick={() => setSelectedPool(-1)}>
+                📊 Classement
+              </button>
+            )}
             {stage.pools.map((p, idx) => (
               <button key={p.id}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${idx === selectedPool ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300'}`}
@@ -204,7 +211,45 @@ export default function PoolsPage() {
           </div>
 
           {/* Bout scoring - screen only */}
-          {pool && (
+          {selectedPool === -1 ? (
+            <div className="print:hidden card flex flex-col">
+              <h2 className="font-semibold text-gray-700 mb-3">Classement de la phase</h2>
+              <div className="overflow-auto" style={{ maxHeight: '60vh' }}>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Rang</th>
+                    <th className="px-3 py-2 text-left">Tireur</th>
+                    <th className="px-3 py-2 text-center">V</th>
+                    <th className="px-3 py-2 text-center">M</th>
+                    <th className="px-3 py-2 text-center">TD</th>
+                    <th className="px-3 py-2 text-center">TR</th>
+                    <th className="px-3 py-2 text-center">Ind.</th>
+                    <th className="px-3 py-2 text-center">Statut</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stage.results.map(r => (
+                    <tr key={r.fencerId} className={`border-t border-gray-100 ${r.status === 'qualified' ? '' : 'opacity-60'}`}>
+                      <td className="px-3 py-2 font-bold text-gray-700">{r.rank}</td>
+                      <td className="px-3 py-2">{participantName(r.fencerId)}</td>
+                      <td className="px-3 py-2 text-center">{r.victories}</td>
+                      <td className="px-3 py-2 text-center">{r.bouts}</td>
+                      <td className="px-3 py-2 text-center">{r.touchesScored}</td>
+                      <td className="px-3 py-2 text-center">{r.touchesReceived}</td>
+                      <td className="px-3 py-2 text-center font-medium">{r.index > 0 ? `+${r.index}` : r.index}</td>
+                      <td className="px-3 py-2 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${r.status === 'qualified' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {r.status === 'qualified' ? 'Qualifié' : 'Éliminé'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              </div>
+            </div>
+          ) : pool && (
             <div className="print:hidden grid gap-5 lg:grid-cols-2">
               {/* Pool composition */}
               <div className="card">
@@ -221,9 +266,9 @@ export default function PoolsPage() {
               </div>
 
               {/* Bouts */}
-              <div className="card">
+              <div className="card flex flex-col">
                 <h2 className="font-semibold text-gray-700 mb-3">Matchs</h2>
-                <div className="space-y-2">
+                <div className="space-y-2 overflow-y-auto flex-1" style={{ maxHeight: '60vh' }}>
                   {pool.bouts.map(bout => (
                     <BoutRow key={bout.id}
                       bout={bout}
@@ -250,9 +295,9 @@ export default function PoolsPage() {
         </>
       )}
 
-      {/* Results table */}
+      {/* Results table — print only (screen version is in the Classement tab) */}
       {stage.status === 'done' && stage.results.length > 0 && (
-        <div>
+        <div className="hidden print:block">
           {/* Print-only recap header before the classification */}
           <div className="hidden print:block mb-3">
             <h2 className="text-base font-bold text-gray-800">{stage.name}</h2>
