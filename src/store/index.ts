@@ -476,7 +476,7 @@ export const useStore = create<AppState>((set, get) => ({
     const contest = getContestOrThrow(t, contestId)
     // Seed from last pool phase results, or initial ranking
     const seededFencers = getSeedOrder(contest)
-    const bouts = buildBracket(size, seededFencers)
+    const bouts = buildBracket(size, seededFencers, hasThirdPlace)
     const phase: TableauPhase = {
       id: nanoid(),
       type: 'tableau',
@@ -689,8 +689,12 @@ export const useStore = create<AppState>((set, get) => ({
     // First propagate any existing BYEs (handles brackets created before the fix)
     let bouts = propagateByes(phase.bouts)
     for (const round of rounds) {
-      const roundBouts = bouts.filter(b => b.round === round && b.fencerAId && b.fencerBId && !b.winnerId)
-      for (const bout of roundBouts) {
+      // Re-filter each iteration so 3rd place bout is picked up after semi-finals are scored
+      let hasMore = true
+      while (hasMore) {
+        const unscored = bouts.filter(b => b.round === round && b.fencerAId && b.fencerBId && !b.winnerId)
+        if (unscored.length === 0) { hasMore = false; break }
+        const bout = unscored[0]
         const aWins = Math.random() < 0.5
         const loserScore = Math.floor(Math.random() * maxScore)
         const sa = aWins ? maxScore : loserScore
@@ -807,6 +811,7 @@ function advanceBracket(bouts: TableauBout[], boutId: string, scoreA: number, sc
   const bout = bouts.find(b => b.id === boutId)
   if (!bout) return bouts
   const winnerId = scoreA > scoreB ? bout.fencerAId : bout.fencerBId
+  const loserId = scoreA > scoreB ? bout.fencerBId : bout.fencerAId
   const resultA: import('../types').MatchResult = scoreA > scoreB ? 'V' : 'D'
   const resultB: import('../types').MatchResult = scoreB > scoreA ? 'V' : 'D'
   const updated = bouts.map(b => b.id === boutId ? { ...b, scoreA, scoreB, resultA, resultB, winnerId } : b)
@@ -817,7 +822,7 @@ function advanceBracket(bouts: TableauBout[], boutId: string, scoreA: number, sc
 
   const nextBoutIndex = Math.floor(bout.boutIndex / 2)
   const isSlotA = bout.boutIndex % 2 === 0
-  return updated.map(b => {
+  let result = updated.map(b => {
     if (b.round === nextRound && b.boutIndex === nextBoutIndex) {
       return isSlotA
         ? { ...b, fencerAId: winnerId }
@@ -825,4 +830,22 @@ function advanceBracket(bouts: TableauBout[], boutId: string, scoreA: number, sc
     }
     return b
   })
+
+  // Route loser to 3rd place bout if this is a semi-final (round=4, boutIndex 0 or 1)
+  if (bout.round === 4 && (bout.boutIndex === 0 || bout.boutIndex === 1)) {
+    const hasThirdPlace = result.some(b => b.round === 4 && b.boutIndex === 2)
+    if (hasThirdPlace && loserId) {
+      result = result.map(b => {
+        if (b.round === 4 && b.boutIndex === 2) {
+          // bout 0 loser → slot A, bout 1 loser → slot B; reset result if rescoring
+          return bout.boutIndex === 0
+            ? { ...b, fencerAId: loserId, winnerId: undefined, scoreA: undefined, scoreB: undefined }
+            : { ...b, fencerBId: loserId, winnerId: undefined, scoreA: undefined, scoreB: undefined }
+        }
+        return b
+      })
+    }
+  }
+
+  return result
 }

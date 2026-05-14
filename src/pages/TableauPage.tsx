@@ -173,15 +173,58 @@ export default function TableauPage() {
 
       <div className="space-y-8 overflow-x-auto print:hidden">
         {rounds.map(round => {
-          const roundBouts = stage.bouts.filter(b => b.round === round).sort((a, b) => a.boutIndex - b.boutIndex)
-          const label = round === 2 ? 'Finale' : round === 4 ? 'Demi-finales' : round === 8 ? 'Quarts de finale' : `Tableau de ${round}`
+          // 3rd place bout lives at round=4 boutIndex=2 but is displayed in the "Finales" section
+          const isFinalesSection = round === 2
+          const thirdPlaceBout = isFinalesSection && stage.hasThirdPlace
+            ? stage.bouts.find(b => b.round === 4 && b.boutIndex === 2)
+            : undefined
+
+          // For demi-finales (round=4): exclude the 3rd place bout from display
+          const roundBouts = stage.bouts
+            .filter(b => b.round === round && !(round === 4 && b.boutIndex === 2))
+            .sort((a, b) => a.boutIndex - b.boutIndex)
+
+          const label = round === 2
+            ? (stage.hasThirdPlace ? 'Finales' : 'Finale')
+            : round === 4 ? 'Demi-finales'
+            : round === 8 ? 'Quarts de finale'
+            : `Tableau de ${round}`
           const isActive = round === activeRound
           const isLocked = lockedRounds.includes(round)
           const prevRoundOpen = rounds.includes(round * 2) && !lockedRounds.includes(round * 2)
           const isLastLocked = round === lastLockedRound
+
           const realBouts = roundBouts.filter(b => b.fencerAId && b.fencerBId)
-          const allRoundScored = realBouts.length > 0 && realBouts.every(b => b.winnerId)
+          // allRoundScored must include 3rd place bout in the Finales section
+          const finalesExtra = thirdPlaceBout && thirdPlaceBout.fencerAId && thirdPlaceBout.fencerBId ? [thirdPlaceBout] : []
+          const allScoredBouts = [...realBouts, ...finalesExtra]
+          const allRoundScored = allScoredBouts.length > 0 && allScoredBouts.every(b => b.winnerId)
+
           const isExpanded = effectiveExpanded.has(round)
+          const boutRoundLocked = isLocked || prevRoundOpen || stage.status === 'done'
+          const stageMaxScore = stage.maxScore
+
+          function renderBout(bout: import('../types').TableauBout) {
+            return (
+              <BracketBout key={bout.id}
+                bout={bout}
+                nameA={fencerName(bout.fencerAId)}
+                nameB={fencerName(bout.fencerBId)}
+                maxScore={stageMaxScore}
+                isEditing={editingBout === bout.id}
+                scoreAInput={scoreA}
+                scoreBInput={scoreB}
+                onScoreAChange={setScoreA}
+                onScoreBChange={setScoreB}
+                onEdit={() => startEdit(bout)}
+                onSave={() => saveBout(bout.id)}
+                onCancel={() => setEditingBout(null)}
+                onQuickScore={(sa, sb) => quickSaveBout(bout.id, sa, sb)}
+                roundLocked={boutRoundLocked}
+              />
+            )
+          }
+
           return (
             <div key={round}>
               <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -193,7 +236,7 @@ export default function TableauPage() {
                   {label}{isLocked && <span className="ml-1 text-xs font-normal">🔒</span>}
                 </button>
                 <div className="flex gap-2 ml-auto">
-                  {import.meta.env.DEV && stage.status === 'running' && !isLocked && !prevRoundOpen && realBouts.some(b => !b.winnerId) && (
+                  {import.meta.env.DEV && stage.status === 'running' && !isLocked && !prevRoundOpen && allScoredBouts.some(b => !b.winnerId) && (
                     <button className="text-xs py-1 px-2 rounded border border-orange-300 text-orange-700 hover:bg-orange-50 transition-colors"
                       onClick={() => fillRandomTableauBouts(tournamentId!, contestId!, stageId!, round)}>
                       🎲
@@ -220,26 +263,28 @@ export default function TableauPage() {
                 </div>
               </div>
               {isExpanded && (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {roundBouts.map(bout => (
-                  <BracketBout key={bout.id}
-                    bout={bout}
-                    nameA={fencerName(bout.fencerAId)}
-                    nameB={fencerName(bout.fencerBId)}
-                    maxScore={stage.maxScore}
-                    isEditing={editingBout === bout.id}
-                    scoreAInput={scoreA}
-                    scoreBInput={scoreB}
-                    onScoreAChange={setScoreA}
-                    onScoreBChange={setScoreB}
-                    onEdit={() => startEdit(bout)}
-                    onSave={() => saveBout(bout.id)}
-                    onCancel={() => setEditingBout(null)}
-                    onQuickScore={(sa, sb) => quickSaveBout(bout.id, sa, sb)}
-                    roundLocked={isLocked || prevRoundOpen}
-                  />
-                ))}
-              </div>
+                <>
+                  {thirdPlaceBout ? (
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Petite finale</p>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                          {renderBout(thirdPlaceBout)}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Finale</p>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                          {roundBouts.map(bout => renderBout(bout))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                      {roundBouts.map(bout => renderBout(bout))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )
@@ -489,6 +534,7 @@ function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, sco
   roundLocked: boolean
 }) {
   const [openSide, setOpenSide] = useState<'A' | 'B' | null>(null)
+  const [popupPos, setPopupPos] = useState<{ top?: number; bottom?: number; left?: number; right?: number } | null>(null)
   const hasResult = bout.scoreA !== undefined && bout.scoreB !== undefined
   const isByeA = !bout.fencerAId
   const isByeB = !bout.fencerBId
@@ -513,10 +559,24 @@ function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, sco
   function handleQuick(sa: number, sb: number) {
     onQuickScore(sa, sb)
     setOpenSide(null)
+    setPopupPos(null)
+  }
+
+  function openPopup(side: 'A' | 'B', btn: HTMLButtonElement | null) {
+    if (!btn) return
+    const rect = btn.getBoundingClientRect()
+    const onRight = rect.left > window.innerWidth / 2
+    const onBottom = rect.bottom > window.innerHeight * 0.6
+    setPopupPos({
+      ...(onBottom ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
+      ...(onRight ? { right: window.innerWidth - rect.right } : { left: rect.left }),
+    })
+    setOpenSide(p => p === side ? null : side)
   }
 
   const QuickPopup = ({ scores, colorClass }: { scores: { sa: number; sb: number }[]; colorClass: string }) => (
-    <div className="absolute right-0 top-full mt-0.5 z-50 bg-white border border-gray-200 rounded-lg shadow-xl p-1.5 flex flex-wrap gap-1" style={{ minWidth: '5rem' }}>
+    <div style={{ position: 'fixed', top: popupPos?.top, bottom: popupPos?.bottom, left: popupPos?.left, right: popupPos?.right, zIndex: 9999 }}
+      className="bg-white border border-gray-200 rounded-lg shadow-xl p-1.5 flex flex-col gap-1">
       {scores.map(({ sa, sb }) => (
         <button key={`${sa}-${sb}`}
           className={`text-xs px-1.5 py-0.5 rounded font-mono whitespace-nowrap transition-colors ${colorClass}`}
@@ -528,8 +588,9 @@ function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, sco
   )
 
   return (
-    <div className={`border rounded-lg shadow-sm ${openSide ? 'relative z-[100]' : ''} ${hasResult ? 'border-green-200' : 'border-gray-200'}`}>
-      {openSide && <div className="fixed inset-0 z-20" onClick={() => setOpenSide(null)} />}
+    <div className={`border rounded-lg shadow-sm ${hasResult ? 'border-green-200' : 'border-gray-200'}`}>
+      {openSide && <div className="fixed inset-0 z-[9998]" onClick={() => { setOpenSide(null); setPopupPos(null) }} />}
+      {openSide && popupPos && <QuickPopup scores={openSide === 'A' ? quickScoresA : quickScoresB} colorClass={openSide === 'A' ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-blue-100 text-blue-800 hover:bg-blue-200'} />}
 
       {/* Row A */}
       <div className={`flex items-center justify-between px-3 py-2 rounded-t-lg ${isWinnerA ? 'bg-green-50' : ''} ${isByeA ? 'opacity-40 italic' : ''}`}>
@@ -541,11 +602,8 @@ function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, sco
             : bout.scoreA !== undefined && <span className={`text-sm font-mono font-bold ${isWinnerA ? 'text-green-700' : 'text-gray-500'}`}>{bout.scoreA}</span>
           }
           {canEdit && (
-            <div className="relative">
-              <button className="text-xs px-1.5 py-0.5 rounded border font-medium bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
-                onClick={() => setOpenSide(p => p === 'A' ? null : 'A')} title="Victoire haut">V&#9662;</button>
-              {openSide === 'A' && <QuickPopup scores={quickScoresA} colorClass="bg-green-100 text-green-800 hover:bg-green-200" />}
-            </div>
+            <button className="text-xs px-1.5 py-0.5 rounded border font-medium bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+              onClick={e => openPopup('A', e.currentTarget)} title="Victoire haut">V&#9662;</button>
           )}
         </div>
       </div>
@@ -562,11 +620,8 @@ function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, sco
             : bout.scoreB !== undefined && <span className={`text-sm font-mono font-bold ${isWinnerB ? 'text-green-700' : 'text-gray-500'}`}>{bout.scoreB}</span>
           }
           {canEdit && (
-            <div className="relative">
-              <button className="text-xs px-1.5 py-0.5 rounded border font-medium bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
-                onClick={() => setOpenSide(p => p === 'B' ? null : 'B')} title="Victoire bas">&#9662;V</button>
-              {openSide === 'B' && <QuickPopup scores={quickScoresB} colorClass="bg-blue-100 text-blue-800 hover:bg-blue-200" />}
-            </div>
+            <button className="text-xs px-1.5 py-0.5 rounded border font-medium bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+              onClick={e => openPopup('B', e.currentTarget)} title="Victoire bas">&#9662;V</button>
           )}
         </div>
       </div>

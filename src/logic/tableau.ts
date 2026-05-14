@@ -116,7 +116,7 @@ export function propagateByes(bouts: TableauBout[]): TableauBout[] {
   return working
 }
 
-export function buildBracket(size: TableauSize, seededFencerIds: string[]): TableauBout[] {
+export function buildBracket(size: TableauSize, seededFencerIds: string[], hasThirdPlace = false): TableauBout[] {
   const bouts: TableauBout[] = []
   const seeding = FIE_SEEDING[size] ?? generateSeedingFor(size)
 
@@ -146,6 +146,13 @@ export function buildBracket(size: TableauSize, seededFencerIds: string[]): Tabl
     round = round / 2
   }
 
-  return propagateByes(bouts)
+  const result = propagateByes(bouts)
+
+  // 3rd place bout: always at round=4 (same as semi-finals), boutIndex=2
+  if (hasThirdPlace && size >= 4) {
+    result.push({ id: nanoid(), round: 4, boutIndex: 2 })
+  }
+
+  return result
 }
 
