@@ -16,6 +16,7 @@ export default function PoolsPage() {
   const [scoreB, setScoreB] = useState('')
   const [allocateModal, setAllocateModal] = useState(false)
   const [poolCountInput, setPoolCountInput] = useState('')
+  const [seedingBalanced, setSeedingBalanced] = useState(true)
   const [showSheets, setShowSheets] = useState(false)
 
   if (!tournament || !contest || !stage || stage.type !== 'pool') return <div className="text-red-500">Phase introuvable</div>
@@ -35,6 +36,10 @@ export default function PoolsPage() {
 
   function openAllocateModal() {
     setPoolCountInput(String(Math.ceil(presentCount / 6)))
+    // Default to balanced for first round, non-balanced (par force) if a previous pool round exists
+    const stageIdx = contest!.stages.findIndex(s => s.id === stageId)
+    const hasPrevPool = contest!.stages.slice(0, stageIdx).some(s => s.type === 'pool' && s.status === 'done')
+    setSeedingBalanced(!hasPrevPool)
     setAllocateModal(true)
   }
 
@@ -42,7 +47,7 @@ export default function PoolsPage() {
     e.preventDefault()
     const count = parseInt(poolCountInput)
     if (!count || count < 1) return
-    await allocatePoolPhase(tournamentId!, contestId!, stageId!, count)
+    await allocatePoolPhase(tournamentId!, contestId!, stageId!, count, seedingBalanced)
     setAllocateModal(false)
   }
 
@@ -153,6 +158,19 @@ export default function PoolsPage() {
                     ~{Math.ceil(presentCount / parseInt(poolCountInput))} {participantLabel} par poule
                   </p>
                 )}
+              </div>
+              <div>
+                <label className="label">Répartition</label>
+                <div className="flex gap-3 mt-1">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="seeding" checked={seedingBalanced} onChange={() => setSeedingBalanced(true)} className="accent-blue-600" />
+                    <span className="text-sm text-gray-700">Équilibrée <span className="text-xs text-gray-400">(serpentin)</span></span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="seeding" checked={!seedingBalanced} onChange={() => setSeedingBalanced(false)} className="accent-blue-600" />
+                    <span className="text-sm text-gray-700">Par force <span className="text-xs text-gray-400">(meilleurs ensemble)</span></span>
+                  </label>
+                </div>
               </div>
               <div className="flex gap-2 pt-2">
                 <button type="button" className="btn-secondary flex-1" onClick={() => setAllocateModal(false)}>Annuler</button>

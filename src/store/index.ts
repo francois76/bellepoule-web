@@ -40,7 +40,7 @@ interface AppState {
   // Stages
   addPoolPhase: (tournamentId: string, contestId: string, name: string, maxScore: number, promotionPercent: number) => Promise<void>
   removeStage: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
-  allocatePoolPhase: (tournamentId: string, contestId: string, stageId: string, poolCount: number) => Promise<void>
+  allocatePoolPhase: (tournamentId: string, contestId: string, stageId: string, poolCount: number, seedingBalanced?: boolean) => Promise<void>
   setPoolBoutScore: (tournamentId: string, contestId: string, stageId: string, poolId: string, boutId: string, scoreA: number, scoreB: number) => Promise<void>
   setPoolBoutAbsent: (tournamentId: string, contestId: string, stageId: string, poolId: string, boutId: string, absentSide: 'A' | 'B') => Promise<void>
   lockPoolPhase: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
@@ -331,7 +331,7 @@ export const useStore = create<AppState>((set, get) => ({
     set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
   },
 
-  allocatePoolPhase: async (tournamentId, contestId, stageId, poolCount) => {
+  allocatePoolPhase: async (tournamentId, contestId, stageId, poolCount, seedingBalanced = true) => {
     const { tournaments } = get()
     const t = getTournamentOrThrow(tournaments, tournamentId)
     const contest = getContestOrThrow(t, contestId)
@@ -352,7 +352,7 @@ export const useStore = create<AppState>((set, get) => ({
       ? contest.teams.filter(team => team.present !== false).map(team => ({ id: team.id, initialRank: team.initialRank }))
       : contest.fencers.filter(f => f.present)
 
-    const pools = allocatePools(participants, poolCount, seedOrder)
+    const pools = allocatePools(participants, poolCount, seedOrder, seedingBalanced)
     const updated = mutateContest(t, contestId, c => ({
       ...c,
       stages: c.stages.map(s => s.id === stageId && s.type === 'pool'

@@ -17,11 +17,19 @@ const FIE_ORDER: Record<number, [number, number][]> = {
 }
 
 /**
- * Distribute participants (fencers or teams) into pools (snake seeding to balance levels).
+ * Distribute participants (fencers or teams) into pools.
  * seedOrder: optional array of participant IDs in rank order (e.g. from a previous pool round).
- * When provided, participants are seeded by their position in seedOrder instead of initialRank.
+ * seedingBalanced:
+ *   true  (default) — snake distribution: best players spread across all pools (FIE standard T1).
+ *   false           — grouped/by-strength: ranks 1..N → pool 1, N+1..2N → pool 2, etc.
+ *                     (BellePoule "par force" / "RepartitionEquilibre=false").
  */
-export function allocatePools(participants: { id: string, initialRank?: number }[], poolCount: number, seedOrder?: string[]): Pool[] {
+export function allocatePools(
+  participants: { id: string, initialRank?: number }[],
+  poolCount: number,
+  seedOrder?: string[],
+  seedingBalanced = true,
+): Pool[] {
   let sorted: { id: string, initialRank?: number }[]
   if (seedOrder && seedOrder.length > 0) {
     const rankMap = new Map(seedOrder.map((id, i) => [id, i]))
@@ -37,14 +45,28 @@ export function allocatePools(participants: { id: string, initialRank?: number }
     bouts: [],
   }))
 
-  // Snake distribution: 0→N-1 then N-1→0, alternating
-  let dir = 1
-  let col = 0
-  for (const fencer of sorted) {
-    pools[col].fencerIds.push(fencer.id)
-    col += dir
-    if (col >= poolCount) { col = poolCount - 1; dir = -1 }
-    else if (col < 0) { col = 0; dir = 1 }
+  if (seedingBalanced) {
+    // Snake distribution: 0→N-1 then N-1→0, alternating (levels balanced across pools)
+    let dir = 1
+    let col = 0
+    for (const fencer of sorted) {
+      pools[col].fencerIds.push(fencer.id)
+      col += dir
+      if (col >= poolCount) { col = poolCount - 1; dir = -1 }
+      else if (col < 0) { col = 0; dir = 1 }
+    }
+  } else {
+    // Grouped/by-strength: fill pool 1 first, then pool 2, etc.
+    // Compute base size and how many pools get an extra fencer
+    const baseSize = Math.floor(sorted.length / poolCount)
+    const extra = sorted.length % poolCount
+    let idx = 0
+    for (let p = 0; p < poolCount; p++) {
+      const size = baseSize + (p < extra ? 1 : 0)
+      for (let i = 0; i < size; i++) {
+        pools[p].fencerIds.push(sorted[idx++].id)
+      }
+    }
   }
 
   // Generate bouts for each pool using FIE order (or fallback)
