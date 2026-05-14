@@ -252,6 +252,124 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* ── Match score sheets (tableau ouvert) ───────────────────────────────── */
+/* Block container per page — grid/flex children cannot break pages in Chrome */
+.match-print-page {
+  display: block;
+  break-after: page;
+  page-break-after: always; /* old property for Chrome compatibility */
+}
+.match-print-page:last-child {
+  break-after: auto;
+  page-break-after: auto;
+}
+.match-sheets-row {
+  display: flex;
+  gap: 5mm;
+  margin-bottom: 5mm;
+}
+.match-sheets-row:last-child { margin-bottom: 0; }
+.match-sheet {
+  flex: 1 1 0;
+  border: 1.5px solid #333;
+  padding: 5px;
+  font-size: 8pt;
+  break-inside: avoid;
+  font-family: system-ui, sans-serif;
+}
+
+.ms-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 1.5px solid #1e3a5f;
+  padding-bottom: 3px;
+  margin-bottom: 4px;
+}
+.ms-round {
+  font-size: 10pt;
+  font-weight: 700;
+  color: #1e3a5f;
+}
+.ms-num {
+  font-size: 7.5pt;
+  color: #666;
+}
+.ms-info-row {
+  font-size: 7.5pt;
+  color: #555;
+  margin-bottom: 5px;
+  display: flex;
+  gap: 12px;
+}
+.ms-fencer-block { margin: 3px 0; }
+.ms-fencer {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+.ms-fencer-name {
+  flex: 1;
+  font-size: 9.5pt;
+  font-weight: 600;
+  border-bottom: 1.5px solid #333;
+  padding-bottom: 2px;
+  min-height: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ms-score-box {
+  width: 36px;
+  height: 26px;
+  border: 2px solid #333;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13pt;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.ms-touch-row {
+  display: flex;
+  gap: 1px;
+  margin-top: 3px;
+  flex-wrap: wrap;
+}
+.ms-touch {
+  width: 14px;
+  height: 14px;
+  border: 1px solid #aaa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 6pt;
+  color: #999;
+  flex-shrink: 0;
+}
+.ms-sep {
+  border-top: 1.5px solid #666;
+  margin: 6px 0;
+}
+
+/* ── Bracket print header ──────────────────────────────────────────────── */
+.bracket-print-header {
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid #1e3a5f;
+  font-family: system-ui, sans-serif;
+}
+.bracket-print-header h1 {
+  font-size: 13pt;
+  font-weight: 700;
+  margin: 0 0 2px;
+}
+.bracket-print-header p {
+  font-size: 8.5pt;
+  color: #444;
+  margin: 0;
+}
+
 @media print {
   @page { margin: 1.5cm; size: A4 portrait; }
 
@@ -292,4 +410,22 @@ body {
   .pool-grid .pg-x {
     background: #444 !important;
   }
+
+  /* Layout: remove overflow-auto and max-width constraints that create scrollbars in print */
+  main {
+    overflow: visible !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 0 !important;
+  }
+
+  /* Extra bottom padding to prevent content from overlapping browser footer */
+  body { padding-bottom: 0 !important; }
+
+  /* Match score boxes: preserve color */
+  .ms-score-box,
+  .ms-touch { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* Bracket: preserve background colors for winners */
+  .bf-winner-bg { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }

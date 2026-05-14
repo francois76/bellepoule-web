@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid'
 import type { Tournament, Contest, Fencer, Referee, Team, PoolPhase, PoolBout, BarragePhase, TableauPhase, TableauBout, TableauSize, MatchResult } from '../types'
 import { getAllTournaments, saveTournament, deleteTournament } from '../db'
 import { allocatePools } from '../logic/pools'
-import { buildBracket } from '../logic/tableau'
+import { buildBracket, propagateByes } from '../logic/tableau'
 
 interface AppState {
   tournaments: Tournament[]
@@ -55,6 +55,10 @@ interface AppState {
 
   addTableauPhase: (tournamentId: string, contestId: string, name: string, size: TableauSize, maxScore: number, hasThirdPlace: boolean) => Promise<void>
   setTableauBoutScore: (tournamentId: string, contestId: string, stageId: string, boutId: string, scoreA: number, scoreB: number) => Promise<void>
+  lockTableauPhase: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
+  unlockTableauPhase: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
+  lockTableauRound: (tournamentId: string, contestId: string, stageId: string, round: number) => Promise<void>
+  unlockTableauRound: (tournamentId: string, contestId: string, stageId: string, round: number) => Promise<void>
   fillRandomTableauBouts: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
 }
 
@@ -482,6 +486,7 @@ export const useStore = create<AppState>((set, get) => ({
       maxScore,
       hasThirdPlace,
       bouts,
+      lockedRounds: [],
     }
     const updated = mutateContest(t, contestId, c => ({ ...c, stages: [...c.stages, phase] }))
     await saveTournament(updated)
@@ -494,7 +499,7 @@ export const useStore = create<AppState>((set, get) => ({
     const contest = getContestOrThrow(t, contestId)
     const phase = contest.stages.find(s => s.id === stageId) as TableauPhase | undefined
     if (!phase || phase.type !== 'tableau') return
-    const updatedBouts = advanceBracket(phase.bouts, boutId, scoreA, scoreB, phase.maxScore)
+    const updatedBouts = propagateByes(advanceBracket(phase.bouts, boutId, scoreA, scoreB, phase.maxScore))
     const updated = mutateContest(t, contestId, c => ({
       ...c,
       stages: c.stages.map(s => s.id === stageId
@@ -619,6 +624,58 @@ export const useStore = create<AppState>((set, get) => ({
     set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
   },
 
+  lockTableauPhase: async (tournamentId, contestId, stageId) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      stages: c.stages.map(s => s.id === stageId && s.type === 'tableau'
+        ? { ...s, status: 'done' } as TableauPhase
+        : s),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
+  unlockTableauPhase: async (tournamentId, contestId, stageId) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      stages: c.stages.map(s => s.id === stageId && s.type === 'tableau'
+        ? { ...s, status: 'running' } as TableauPhase
+        : s),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
+  lockTableauRound: async (tournamentId, contestId, stageId, round) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      stages: c.stages.map(s => s.id === stageId && s.type === 'tableau'
+        ? { ...s, lockedRounds: [...new Set([...(s.lockedRounds ?? []), round])] } as TableauPhase
+        : s),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
+  unlockTableauRound: async (tournamentId, contestId, stageId, round) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      stages: c.stages.map(s => s.id === stageId && s.type === 'tableau'
+        ? { ...s, lockedRounds: (s.lockedRounds ?? []).filter(r => r !== round) } as TableauPhase
+        : s),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
   fillRandomTableauBouts: async (tournamentId, contestId, stageId) => {
     const { tournaments } = get()
     const t = getTournamentOrThrow(tournaments, tournamentId)
@@ -628,7 +685,8 @@ export const useStore = create<AppState>((set, get) => ({
     const maxScore = phase.maxScore
     // Process rounds in order from largest (first round) to smallest (final)
     const rounds = Array.from(new Set(phase.bouts.map(b => b.round))).sort((a, b) => b - a)
-    let bouts = [...phase.bouts]
+    // First propagate any existing BYEs (handles brackets created before the fix)
+    let bouts = propagateByes(phase.bouts)
     for (const round of rounds) {
       const roundBouts = bouts.filter(b => b.round === round && b.fencerAId && b.fencerBId && !b.winnerId)
       for (const bout of roundBouts) {

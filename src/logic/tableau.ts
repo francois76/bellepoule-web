@@ -35,19 +35,98 @@ function generateSeedingFor(n: number): number[] {
   return positions
 }
 
+/**
+ * Returns true if ANY first-round slot in the sub-tree rooted at this bout
+ * contains a real player.  Used to determine whether an empty slot is a
+ * definitive BYE (no player ever) vs a pending match result.
+ *
+ * `size` = the first-round number (e.g. 32 for a T32).
+ */
+function branchHasPlayer(bouts: TableauBout[], round: number, boutIndex: number, size: number): boolean {
+  const bout = bouts.find(b => b.round === round && b.boutIndex === boutIndex)
+  if (!bout) return false
+  if (round === size) {
+    // Base case: first round — has a player if either slot is filled
+    return !!(bout.fencerAId || bout.fencerBId)
+  }
+  // Recurse into predecessor bouts (higher round number = earlier in bracket)
+  return (
+    branchHasPlayer(bouts, round * 2, boutIndex * 2, size) ||
+    branchHasPlayer(bouts, round * 2, boutIndex * 2 + 1, size)
+  )
+}
+
+/**
+ * Propagate BYEs through a bracket correctly.
+ *
+ * A bout auto-advances its player ONLY when the opponent's ENTIRE sub-tree
+ * has no real players — i.e. the missing slot is definitively void, not just
+ * "waiting for the other match to finish".
+ *
+ * This prevents cascading BYEs into rounds that still have real matches to play.
+ * Exported so the store can call it after each advanceBracket.
+ */
+export function propagateByes(bouts: TableauBout[]): TableauBout[] {
+  const working = bouts.map(b => ({ ...b }))
+  const size = Math.max(...working.map(b => b.round))
+  const rounds = Array.from(new Set(working.map(b => b.round))).sort((a, b) => b - a)
+
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const r of rounds) {
+      for (const bout of working.filter(b => b.round === r && !b.winnerId)) {
+        const hasA = !!bout.fencerAId
+        const hasB = !!bout.fencerBId
+        if (hasA === hasB) continue // both filled (real match) or both empty (pending/void)
+
+        // One slot filled. Check if the EMPTY side's branch will ever have a player.
+        let emptyBranchHasPlayer: boolean
+        if (r === size) {
+          // First round: the slot was never seeded → definitive BYE
+          emptyBranchHasPlayer = false
+        } else {
+          // Check predecessor sub-tree of the empty slot
+          const emptyPredIdx = !hasA
+            ? bout.boutIndex * 2        // fencerA missing → check predA branch
+            : bout.boutIndex * 2 + 1   // fencerB missing → check predB branch
+          emptyBranchHasPlayer = branchHasPlayer(working, r * 2, emptyPredIdx, size)
+        }
+
+        if (!emptyBranchHasPlayer) {
+          // Definitive BYE: auto-advance the present player
+          const winnerId = (bout.fencerAId ?? bout.fencerBId)!
+          bout.winnerId = winnerId
+          changed = true
+          // Propagate into next round slot
+          const nextRound = Math.floor(r / 2)
+          if (nextRound >= 1) {
+            const nextBoutIndex = Math.floor(bout.boutIndex / 2)
+            const isSlotA = bout.boutIndex % 2 === 0
+            const next = working.find(b => b.round === nextRound && b.boutIndex === nextBoutIndex)
+            if (next && !next.winnerId) {
+              if (isSlotA && !next.fencerAId) next.fencerAId = winnerId
+              else if (!isSlotA && !next.fencerBId) next.fencerBId = winnerId
+            }
+          }
+        }
+      }
+    }
+  }
+  return working
+}
+
 export function buildBracket(size: TableauSize, seededFencerIds: string[]): TableauBout[] {
   const bouts: TableauBout[] = []
   const seeding = FIE_SEEDING[size] ?? generateSeedingFor(size)
 
   // First round: place seeded fencers into slots
-  // Each bout has 2 slots: slot index = boutIndex*2 and boutIndex*2+1
   const firstRoundSlots: (string | undefined)[] = Array(size).fill(undefined)
   seededFencerIds.forEach((fId, seedIdx) => {
     const slot = seeding[seedIdx]
     if (slot !== undefined) firstRoundSlots[slot] = fId
   })
 
-  // Create bouts for first round (tableau de `size`)
   for (let i = 0; i < size / 2; i++) {
     bouts.push({
       id: nanoid(),
@@ -61,19 +140,12 @@ export function buildBracket(size: TableauSize, seededFencerIds: string[]): Tabl
   // Create empty bouts for all subsequent rounds
   let round = size / 2
   while (round >= 2) {
-    const count = round / 2
-    for (let i = 0; i < count; i++) {
-      bouts.push({
-        id: nanoid(),
-        round,
-        boutIndex: i,
-      })
+    for (let i = 0; i < round / 2; i++) {
+      bouts.push({ id: nanoid(), round, boutIndex: i })
     }
     round = round / 2
   }
 
-  // Final round (round=2 means the final bout)
-  // Already included above when round=2, count=1
-
-  return bouts
+  return propagateByes(bouts)
 }
+

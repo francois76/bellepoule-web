@@ -128,6 +128,7 @@ export interface TableauPhase {
   maxScore: number
   hasThirdPlace: boolean
   bouts: TableauBout[]
+  lockedRounds: number[]  // round numbers (e.g. 32, 16, 8…) that have been locked/completed
 }
 
 // ─── Classification ───────────────────────────────────────────────────────────
