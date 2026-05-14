@@ -82,6 +82,18 @@ export default function TableauPage() {
     setScoreB('')
   }
 
+  async function quickSaveBout(boutId: string, sa: number, sb: number) {
+    await setTableauBoutScore(tournamentId!, contestId!, stageId!, boutId, sa, sb)
+    setEditingBout(null)
+    setScoreA('')
+    setScoreB('')
+  }
+
+  function printRound(round: number) {
+    setPrintingRound(round)
+    setTimeout(() => { window.print(); setPrintingRound(null) }, 80)
+  }
+
   return (
     <div className="space-y-5">
       {/* Override @page to landscape for tableau printing, with extra bottom margin for browser footer */}
@@ -167,7 +179,7 @@ export default function TableauPage() {
                 <div className="flex gap-2 ml-auto">
                   {realBouts.length > 0 && stage.status === 'running' && (
                     <button className="btn-secondary text-xs py-1 px-2"
-                      onClick={() => { setPrintingRound(round); setTimeout(() => { window.print(); setPrintingRound(null) }, 80) }}>
+                      onClick={() => printRound(round)}>
                       🖨️ Feuilles
                     </button>
                   )}
@@ -200,6 +212,8 @@ export default function TableauPage() {
                     onEdit={() => startEdit(bout)}
                     onSave={() => saveBout(bout.id)}
                     onCancel={() => setEditingBout(null)}
+                    onQuickScore={(sa, sb) => quickSaveBout(bout.id, sa, sb)}
+                    roundLocked={isLocked}
                   />
                 ))}
               </div>
@@ -434,7 +448,7 @@ function BracketPrint({ stage, fencerName, contest, tournament }: PrintProps) {
   )
 }
 
-function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBInput, onScoreAChange, onScoreBChange, onEdit, onSave, onCancel }: {
+function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBInput, onScoreAChange, onScoreBChange, onEdit, onSave, onCancel, onQuickScore, roundLocked }: {
   bout: TableauBout
   nameA: string
   nameB: string
@@ -447,63 +461,106 @@ function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, sco
   onEdit: () => void
   onSave: () => void
   onCancel: () => void
+  onQuickScore: (sa: number, sb: number) => void
+  roundLocked: boolean
 }) {
+  const [openSide, setOpenSide] = useState<'A' | 'B' | null>(null)
   const hasResult = bout.scoreA !== undefined && bout.scoreB !== undefined
-  const isBye = !bout.fencerAId || !bout.fencerBId
-  const canEdit = !isBye && !hasResult
+  const isByeA = !bout.fencerAId
+  const isByeB = !bout.fencerBId
+  const isBye = isByeA || isByeB
+  const canEdit = !isBye && !roundLocked
+  const isWinnerA = bout.winnerId === bout.fencerAId
+  const isWinnerB = bout.winnerId === bout.fencerBId
+
+  const saNum = parseInt(scoreAInput)
+  const sbNum = parseInt(scoreBInput)
+  const err = isEditing ? (() => {
+    if (isNaN(saNum) || isNaN(sbNum)) return null
+    if (saNum < 0 || sbNum < 0) return 'Score n\u00e9gatif impossible'
+    if (saNum > maxScore || sbNum > maxScore) return `Score max\u00a0: ${maxScore}`
+    if (saNum === sbNum) return '\u00c9galit\u00e9 impossible en tableau'
+    return null
+  })() : null
+
+  const quickScoresA = Array.from({ length: maxScore }, (_, i) => ({ sa: maxScore, sb: i }))
+  const quickScoresB = Array.from({ length: maxScore }, (_, i) => ({ sa: i, sb: maxScore }))
+
+  function handleQuick(sa: number, sb: number) {
+    onQuickScore(sa, sb)
+    setOpenSide(null)
+  }
+
+  const QuickPopup = ({ scores, colorClass }: { scores: { sa: number; sb: number }[]; colorClass: string }) => (
+    <div className="absolute right-0 top-full mt-0.5 z-50 bg-white border border-gray-200 rounded-lg shadow-xl p-1.5 flex flex-wrap gap-1" style={{ minWidth: '5rem' }}>
+      {scores.map(({ sa, sb }) => (
+        <button key={`${sa}-${sb}`}
+          className={`text-xs px-1.5 py-0.5 rounded font-mono whitespace-nowrap transition-colors ${colorClass}`}
+          onClick={() => handleQuick(sa, sb)}>
+          {sa}-{sb}
+        </button>
+      ))}
+    </div>
+  )
 
   return (
-    <div className={`border rounded-lg overflow-hidden shadow-sm ${hasResult ? 'border-green-200' : 'border-gray-200'}`}>
-      <FencerSlot name={nameA} score={bout.scoreA} isWinner={bout.winnerId === bout.fencerAId} isBye={!bout.fencerAId} />
-      <div className="border-t border-gray-200" />
-      <FencerSlot name={nameB} score={bout.scoreB} isWinner={bout.winnerId === bout.fencerBId} isBye={!bout.fencerBId} />
-      {isEditing ? (
-        <div className="print:hidden bg-blue-50 px-3 py-2 border-t border-blue-200 space-y-1">
-          {(() => {
-            const sa = parseInt(scoreAInput)
-            const sb = parseInt(scoreBInput)
-            const err = (() => {
-              if (isNaN(sa) || isNaN(sb)) return null
-              if (sa < 0 || sb < 0) return 'Score négatif impossible'
-              if (sa > maxScore || sb > maxScore) return `Score max : ${maxScore}`
-              if (sa === sb) return 'Égalité impossible en tableau'
-              // FIE : victoire à la montre possible si le temps expire (ex. V12-10 en V15)
-              return null
-            })()
-            return (
-              <>
-                <div className="flex gap-2 items-center">
-                  <input type="number" min="0" max={maxScore} value={scoreAInput} onChange={e => onScoreAChange(e.target.value)}
-                    className={`w-10 text-center border rounded px-1 py-0.5 text-sm ${err ? 'border-red-400 bg-red-50' : ''}`} autoFocus />
-                  <span className="text-gray-400">—</span>
-                  <input type="number" min="0" max={maxScore} value={scoreBInput} onChange={e => onScoreBChange(e.target.value)}
-                    className={`w-10 text-center border rounded px-1 py-0.5 text-sm ${err ? 'border-red-400 bg-red-50' : ''}`} />
-                  <button className="btn-primary text-xs py-0.5 px-2 ml-auto disabled:opacity-40" onClick={onSave} disabled={!!err}>✓</button>
-                  <button className="btn-secondary text-xs py-0.5 px-2" onClick={onCancel}>✕</button>
-                </div>
-                {err && <p className="text-xs text-red-600 text-center">{err}</p>}
-              </>
-            )
-          })()}
+    <div className={`border rounded-lg shadow-sm ${openSide ? 'relative z-[100]' : ''} ${hasResult ? 'border-green-200' : 'border-gray-200'}`}>
+      {openSide && <div className="fixed inset-0 z-20" onClick={() => setOpenSide(null)} />}
+
+      {/* Row A */}
+      <div className={`flex items-center justify-between px-3 py-2 rounded-t-lg ${isWinnerA ? 'bg-green-50' : ''} ${isByeA ? 'opacity-40 italic' : ''}`}>
+        <span className={`text-sm truncate ${isWinnerA ? 'font-bold text-green-700' : 'text-gray-700'}`}>{nameA}</span>
+        <div className="flex items-center gap-1 shrink-0 ml-2">
+          {isEditing
+            ? <input type="number" min="0" max={maxScore} value={scoreAInput} onChange={e => onScoreAChange(e.target.value)}
+                className={`w-10 text-center border rounded px-1 py-0.5 text-sm ${err ? 'border-red-400 bg-red-50' : ''}`} autoFocus />
+            : bout.scoreA !== undefined && <span className={`text-sm font-mono font-bold ${isWinnerA ? 'text-green-700' : 'text-gray-500'}`}>{bout.scoreA}</span>
+          }
+          {canEdit && (
+            <div className="relative">
+              <button className="text-xs px-1.5 py-0.5 rounded border font-medium bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                onClick={() => setOpenSide(p => p === 'A' ? null : 'A')} title="Victoire haut">V&#9662;</button>
+              {openSide === 'A' && <QuickPopup scores={quickScoresA} colorClass="bg-green-100 text-green-800 hover:bg-green-200" />}
+            </div>
+          )}
         </div>
-      ) : (
-        canEdit && (
-          <button onClick={onEdit} className="print:hidden w-full text-center text-xs text-blue-500 hover:text-blue-700 py-1 border-t border-gray-100 hover:bg-blue-50 transition-colors">
-            Saisir le score
-          </button>
-        )
+      </div>
+
+      <div className="border-t border-gray-200" />
+
+      {/* Row B */}
+      <div className={`flex items-center justify-between px-3 py-2 ${!canEdit && !isEditing ? 'rounded-b-lg' : ''} ${isWinnerB ? 'bg-green-50' : ''} ${isByeB ? 'opacity-40 italic' : ''}`}>
+        <span className={`text-sm truncate ${isWinnerB ? 'font-bold text-green-700' : 'text-gray-700'}`}>{nameB}</span>
+        <div className="flex items-center gap-1 shrink-0 ml-2">
+          {isEditing
+            ? <input type="number" min="0" max={maxScore} value={scoreBInput} onChange={e => onScoreBChange(e.target.value)}
+                className={`w-10 text-center border rounded px-1 py-0.5 text-sm ${err ? 'border-red-400 bg-red-50' : ''}`} />
+            : bout.scoreB !== undefined && <span className={`text-sm font-mono font-bold ${isWinnerB ? 'text-green-700' : 'text-gray-500'}`}>{bout.scoreB}</span>
+          }
+          {canEdit && (
+            <div className="relative">
+              <button className="text-xs px-1.5 py-0.5 rounded border font-medium bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                onClick={() => setOpenSide(p => p === 'B' ? null : 'B')} title="Victoire bas">&#9662;V</button>
+              {openSide === 'B' && <QuickPopup scores={quickScoresB} colorClass="bg-blue-100 text-blue-800 hover:bg-blue-200" />}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {isEditing && (
+        <div className="flex items-center justify-end gap-1 px-3 py-1.5 border-t border-gray-200">
+          {err && <p className="text-xs text-red-600 mr-auto">{err}</p>}
+          <button className="btn-primary text-xs py-0.5 px-2 disabled:opacity-40" onClick={onSave} disabled={!!err}>&#10003;</button>
+          <button className="btn-secondary text-xs py-0.5 px-2" onClick={onCancel}>&#10005;</button>
+        </div>
+      )}
+
+      {!isEditing && canEdit && (
+        <button onClick={onEdit} className="print:hidden w-full text-center text-xs text-blue-500 hover:text-blue-700 py-1 border-t border-gray-100 hover:bg-blue-50 transition-colors rounded-b-lg">
+          {hasResult ? 'Modifier le score' : 'Saisir le score'}
+        </button>
       )}
     </div>
   )
 }
 
-function FencerSlot({ name, score, isWinner, isBye }: { name: string; score?: number; isWinner: boolean; isBye: boolean }) {
-  return (
-    <div className={`flex items-center justify-between px-3 py-2 ${isWinner ? 'bg-green-50' : ''} ${isBye ? 'opacity-40 italic' : ''}`}>
-      <span className={`text-sm truncate ${isWinner ? 'font-bold text-green-700' : 'text-gray-700'}`}>{name}</span>
-      {score !== undefined && (
-        <span className={`text-sm font-mono ml-2 font-bold ${isWinner ? 'text-green-700' : 'text-gray-500'}`}>{score}</span>
-      )}
-    </div>
-  )
-}
