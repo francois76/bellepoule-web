@@ -59,7 +59,7 @@ interface AppState {
   unlockTableauPhase: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
   lockTableauRound: (tournamentId: string, contestId: string, stageId: string, round: number) => Promise<void>
   unlockTableauRound: (tournamentId: string, contestId: string, stageId: string, round: number) => Promise<void>
-  fillRandomTableauBouts: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
+  fillRandomTableauBouts: (tournamentId: string, contestId: string, stageId: string, round?: number) => Promise<void>
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -676,7 +676,7 @@ export const useStore = create<AppState>((set, get) => ({
     set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
   },
 
-  fillRandomTableauBouts: async (tournamentId, contestId, stageId) => {
+  fillRandomTableauBouts: async (tournamentId, contestId, stageId, round?) => {
     const { tournaments } = get()
     const t = getTournamentOrThrow(tournaments, tournamentId)
     const contest = getContestOrThrow(t, contestId)
@@ -684,7 +684,8 @@ export const useStore = create<AppState>((set, get) => ({
     if (!phase || phase.type !== 'tableau') return
     const maxScore = phase.maxScore
     // Process rounds in order from largest (first round) to smallest (final)
-    const rounds = Array.from(new Set(phase.bouts.map(b => b.round))).sort((a, b) => b - a)
+    const allRounds = Array.from(new Set(phase.bouts.map(b => b.round))).sort((a, b) => b - a)
+    const rounds = round ? [round] : allRounds
     // First propagate any existing BYEs (handles brackets created before the fix)
     let bouts = propagateByes(phase.bouts)
     for (const round of rounds) {

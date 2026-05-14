@@ -120,12 +120,6 @@ export default function TableauPage() {
           </div>
         </div>
         <div className="print:hidden flex gap-2 flex-wrap">
-          {import.meta.env.DEV && stage.status !== 'done' && (
-            <button className="btn-secondary border-orange-300 text-orange-700 hover:bg-orange-50"
-              onClick={() => fillRandomTableauBouts(tournamentId!, contestId!, stageId!)}>
-              🎲 Scores aléatoires
-            </button>
-          )}
           {stage.status === 'running' && allDone && (
             <button className="btn-primary bg-green-600 hover:bg-green-700"
               onClick={() => lockTableauPhase(tournamentId!, contestId!, stageId!)}>
@@ -178,6 +172,12 @@ export default function TableauPage() {
                   {label}{isLocked && <span className="ml-2 text-xs font-normal">🔒</span>}
                 </h2>
                 <div className="flex gap-2 ml-auto">
+                  {import.meta.env.DEV && stage.status === 'running' && !isLocked && !prevRoundOpen && realBouts.some(b => !b.winnerId) && (
+                    <button className="text-xs py-1 px-2 rounded border border-orange-300 text-orange-700 hover:bg-orange-50 transition-colors"
+                      onClick={() => fillRandomTableauBouts(tournamentId!, contestId!, stageId!, round)}>
+                      🎲
+                    </button>
+                  )}
                   {realBouts.length > 0 && stage.status === 'running' && (
                     <button className="btn-secondary text-xs py-1 px-2"
                       onClick={() => printRound(round)}>
