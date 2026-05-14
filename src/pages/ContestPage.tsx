@@ -14,9 +14,24 @@ const stageLabel: Record<string, string> = {
 
 const TABLEAU_SIZES: TableauSize[] = [4, 8, 16, 32, 64, 128]
 
+/** Score max suggéré selon la catégorie d'âge (règlement fédéral jeunes) */
+function suggestedMaxScore(category: string | undefined, phase: 'pool' | 'tableau'): string {
+  if (!category) return phase === 'pool' ? '5' : '15'
+  const cat = category.toUpperCase()
+  if (/M9|M11|M13/.test(cat)) return phase === 'pool' ? '4' : '8'
+  return phase === 'pool' ? '5' : '15'
+}
+
+function scoreHint(category: string | undefined, phase: 'pool' | 'tableau'): string | null {
+  if (!category) return null
+  const cat = category.toUpperCase()
+  if (/M9|M11|M13/.test(cat)) return phase === 'pool' ? 'M13 et moins : 4 touches (rèf. regt. jeunes)' : 'M13 et moins : 8 touches (rèf. regt. jeunes)'
+  return null
+}
+
 export default function ContestPage() {
   const { tournamentId, contestId } = useParams<{ tournamentId: string; contestId: string }>()
-  const { tournaments, addPoolPhase, addTableauPhase, updateTournament: _ut } = useStore()
+  const { tournaments, addPoolPhase, addTableauPhase, addBarragePhase, updateTournament: _ut } = useStore()
   const navigate = useNavigate()
   const tournament = tournaments.find(t => t.id === tournamentId)
   const contest = tournament?.contests.find(c => c.id === contestId)
@@ -28,13 +43,16 @@ export default function ContestPage() {
   const [tableauForm, setTableauForm] = useState({ size: '64', maxScore: '15', hasThirdPlace: true })
   const [tableauAutoSize, setTableauAutoSize] = useState<number | null>(null)
 
+  const [barrageModal, setBarrageModal] = useState(false)
+  const [barrageForm, setBarrageForm] = useState({ name: '', maxScore: '5' })
+
   if (!tournament || !contest) return <div className="text-red-500">Compétition introuvable</div>
 
   const presentCount = (contest?.fencers ?? []).filter(f => f.present).length
 
   function openPoolModal() {
     const n = contest!.stages.filter(s => s.type === 'pool').length + 1
-    setPoolForm({ name: `Tour de poules ${n}`, maxScore: '5', promotionPercent: '75' })
+    setPoolForm({ name: `Tour de poules ${n}`, maxScore: suggestedMaxScore(contest?.category, 'pool'), promotionPercent: '75' })
     setPoolModal(true)
   }
 
@@ -55,7 +73,7 @@ export default function ContestPage() {
     let autoSize: number = qualifiedCount > 0 ? 4 : 64
     if (qualifiedCount > 0) { while (autoSize < qualifiedCount) autoSize *= 2 }
     setTableauAutoSize(qualifiedCount > 0 ? autoSize : null)
-    setTableauForm({ size: String(autoSize), maxScore: '15', hasThirdPlace: true })
+    setTableauForm({ size: String(autoSize), maxScore: suggestedMaxScore(contest?.category, 'tableau'), hasThirdPlace: true })
     setTableauModal(true)
   }
 
@@ -72,10 +90,27 @@ export default function ContestPage() {
     setTableauModal(false)
   }
 
+  function openBarrageModal() {
+    const n = contest!.stages.filter(s => s.type === 'barrage').length + 1
+    setBarrageForm({ name: `Barrage ${n}`, maxScore: suggestedMaxScore(contest?.category, 'pool') })
+    setBarrageModal(true)
+  }
+
+  async function handleCreateBarrage(e: React.FormEvent) {
+    e.preventDefault()
+    await addBarragePhase(
+      tournamentId!, contestId!,
+      barrageForm.name.trim(),
+      parseInt(barrageForm.maxScore) || 5,
+    )
+    setBarrageModal(false)
+  }
+
   function navigateToStage(stage: { id: string; type: string }) {
     const base = `/tournament/${tournamentId}/contest/${contestId}`
     if (stage.type === 'pool') navigate(`${base}/pools/${stage.id}`)
     else if (stage.type === 'tableau') navigate(`${base}/tableau/${stage.id}`)
+    else if (stage.type === 'barrage') navigate(`${base}/barrage/${stage.id}`)
   }
 
   return (
@@ -124,6 +159,7 @@ export default function ContestPage() {
         />
         <ActionCard icon="🤺" label="+ Tour de poules" sub="Ajouter phase" onClick={openPoolModal} />
         <ActionCard icon="🏆" label="+ Tableau" sub="Élimination directe" onClick={openTableauModal} />
+        <ActionCard icon="⚔️" label="+ Barrage" sub="Départage" onClick={openBarrageModal} />
       </div>
 
       {/* Stages */}
@@ -163,6 +199,9 @@ export default function ContestPage() {
                 <label className="label">Score maximum par match</label>
                 <input className="input" type="number" min={1} max={99} value={poolForm.maxScore}
                   onChange={e => setPoolForm(f => ({ ...f, maxScore: e.target.value }))} required />
+                {scoreHint(contest.category, 'pool') && (
+                  <p className="text-xs text-blue-500 mt-1">{scoreHint(contest.category, 'pool')}</p>
+                )}
               </div>
               <div>
                 <label className="label">Pourcentage de qualifiés (%)</label>
@@ -197,6 +236,9 @@ export default function ContestPage() {
                 <label className="label">Score maximum</label>
                 <input className="input" type="number" min={1} max={99} value={tableauForm.maxScore}
                   onChange={e => setTableauForm(f => ({ ...f, maxScore: e.target.value }))} required />
+                {scoreHint(contest.category, 'tableau') && (
+                  <p className="text-xs text-blue-500 mt-1">{scoreHint(contest.category, 'tableau')}</p>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <input type="checkbox" id="thirdPlace" checked={tableauForm.hasThirdPlace}
@@ -205,6 +247,35 @@ export default function ContestPage() {
               </div>
               <div className="flex gap-2 pt-2">
                 <button type="button" className="btn-secondary flex-1" onClick={() => setTableauModal(false)}>Annuler</button>
+                <button type="submit" className="btn-primary flex-1">Créer</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal — Nouveau barrage */}
+      {barrageModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h2 className="text-lg font-bold text-gray-800">Nouveau barrage</h2>
+            <p className="text-sm text-gray-500">Département entre tireurs ex-æquo</p>
+            <form onSubmit={handleCreateBarrage} className="space-y-3">
+              <div>
+                <label className="label">Nom</label>
+                <input className="input" value={barrageForm.name}
+                  onChange={e => setBarrageForm(f => ({ ...f, name: e.target.value }))} required autoFocus />
+              </div>
+              <div>
+                <label className="label">Score maximum</label>
+                <input className="input" type="number" min={1} max={99} value={barrageForm.maxScore}
+                  onChange={e => setBarrageForm(f => ({ ...f, maxScore: e.target.value }))} required />
+                {scoreHint(contest.category, 'pool') && (
+                  <p className="text-xs text-blue-500 mt-1">{scoreHint(contest.category, 'pool')}</p>
+                )}
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button type="button" className="btn-secondary flex-1" onClick={() => setBarrageModal(false)}>Annuler</button>
                 <button type="submit" className="btn-primary flex-1">Créer</button>
               </div>
             </form>

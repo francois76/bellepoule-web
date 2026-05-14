@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
-import type { Tournament, Contest, Fencer, Referee, Team, PoolPhase, PoolBout, TableauPhase, TableauBout, TableauSize, MatchResult } from '../types'
+import type { Tournament, Contest, Fencer, Referee, Team, PoolPhase, PoolBout, BarragePhase, TableauPhase, TableauBout, TableauSize, MatchResult } from '../types'
 import { getAllTournaments, saveTournament, deleteTournament } from '../db'
 import { allocatePools } from '../logic/pools'
 import { buildBracket } from '../logic/tableau'
@@ -39,9 +39,15 @@ interface AppState {
   addPoolPhase: (tournamentId: string, contestId: string, name: string, maxScore: number, promotionPercent: number) => Promise<void>
   allocatePoolPhase: (tournamentId: string, contestId: string, stageId: string, poolCount: number) => Promise<void>
   setPoolBoutScore: (tournamentId: string, contestId: string, stageId: string, poolId: string, boutId: string, scoreA: number, scoreB: number) => Promise<void>
+  setPoolBoutAbsent: (tournamentId: string, contestId: string, stageId: string, poolId: string, boutId: string, absentSide: 'A' | 'B') => Promise<void>
   lockPoolPhase: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
   unlockPoolPhase: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
   fillRandomPoolBouts: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
+
+  addBarragePhase: (tournamentId: string, contestId: string, name: string, maxScore: number) => Promise<void>
+  addBarrageBout: (tournamentId: string, contestId: string, stageId: string, fencerAId: string, fencerBId: string) => Promise<void>
+  setBarrageBoutScore: (tournamentId: string, contestId: string, stageId: string, boutId: string, scoreA: number, scoreB: number) => Promise<void>
+  lockBarragePhase: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
 
   addTableauPhase: (tournamentId: string, contestId: string, name: string, size: TableauSize, maxScore: number, hasThirdPlace: boolean) => Promise<void>
   setTableauBoutScore: (tournamentId: string, contestId: string, stageId: string, boutId: string, scoreA: number, scoreB: number) => Promise<void>
@@ -335,6 +341,37 @@ export const useStore = create<AppState>((set, get) => ({
     set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
   },
 
+  setPoolBoutAbsent: async (tournamentId, contestId, stageId, poolId, boutId, absentSide) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      stages: c.stages.map(s => {
+        if (s.id !== stageId || s.type !== 'pool') return s
+        const maxScore = (s as PoolPhase).maxScore
+        return {
+          ...s,
+          pools: (s as PoolPhase).pools.map(p => {
+            if (p.id !== poolId) return p
+            return {
+              ...p,
+              bouts: p.bouts.map(b => {
+                if (b.id !== boutId) return b
+                if (absentSide === 'A') {
+                  return { ...b, scoreA: 0, scoreB: maxScore, resultA: 'A' as MatchResult, resultB: 'V' as MatchResult }
+                } else {
+                  return { ...b, scoreA: maxScore, scoreB: 0, resultA: 'V' as MatchResult, resultB: 'A' as MatchResult }
+                }
+              }),
+            }
+          }),
+        } as PoolPhase
+      }),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
   lockPoolPhase: async (tournamentId, contestId, stageId) => {
     const { tournaments } = get()
     const t = getTournamentOrThrow(tournaments, tournamentId)
@@ -442,6 +479,75 @@ export const useStore = create<AppState>((set, get) => ({
     set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
   },
 
+  addBarragePhase: async (tournamentId, contestId, name, maxScore) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const phase: BarragePhase = {
+      id: nanoid(),
+      type: 'barrage',
+      name,
+      status: 'running',
+      maxScore,
+      bouts: [],
+    }
+    const updated = mutateContest(t, contestId, c => ({ ...c, stages: [...c.stages, phase] }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
+  addBarrageBout: async (tournamentId, contestId, stageId, fencerAId, fencerBId) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const newBout: PoolBout = { id: nanoid(), fencerAId, fencerBId, order: 0 }
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      stages: c.stages.map(s => {
+        if (s.id !== stageId || s.type !== 'barrage') return s
+        const phase = s as BarragePhase
+        const order = phase.bouts.length + 1
+        return { ...phase, bouts: [...phase.bouts, { ...newBout, order }] } as BarragePhase
+      }),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
+  setBarrageBoutScore: async (tournamentId, contestId, stageId, boutId, scoreA, scoreB) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      stages: c.stages.map(s => {
+        if (s.id !== stageId || s.type !== 'barrage') return s
+        const resultA: MatchResult = scoreA > scoreB ? 'V' : 'D'
+        const resultB: MatchResult = scoreB > scoreA ? 'V' : 'D'
+        return {
+          ...s,
+          bouts: (s as BarragePhase).bouts.map(b =>
+            b.id === boutId ? { ...b, scoreA, scoreB, resultA, resultB } : b
+          ),
+        } as BarragePhase
+      }),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
+  lockBarragePhase: async (tournamentId, contestId, stageId) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      stages: c.stages.map(s =>
+        s.id === stageId && s.type === 'barrage'
+          ? { ...s, status: 'done' as const }
+          : s
+      ),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
   fillRandomTableauBouts: async (tournamentId, contestId, stageId) => {
     const { tournaments } = get()
     const t = getTournamentOrThrow(tournaments, tournamentId)
@@ -488,14 +594,27 @@ function computePoolResults(phase: PoolPhase): PoolStageResult[] {
       const a = totals[bout.fencerAId]
       const b = totals[bout.fencerBId]
       if (!a || !b) continue
-      if (bout.resultA === 'A' || bout.resultB === 'A') continue
-      a.bouts++; b.bouts++
-      a.touchesScored += bout.scoreA ?? 0
-      a.touchesReceived += bout.scoreB ?? 0
-      b.touchesScored += bout.scoreB ?? 0
-      b.touchesReceived += bout.scoreA ?? 0
-      if (bout.resultA === 'V') a.victories++
-      if (bout.resultB === 'V') b.victories++
+      if (bout.resultA === 'A') {
+        // Fencer A absent: B gets V+maxScore, A gets D0
+        a.bouts++; b.bouts++
+        b.victories++
+        b.touchesScored += phase.maxScore
+        a.touchesReceived += phase.maxScore
+      } else if (bout.resultB === 'A') {
+        // Fencer B absent: A gets V+maxScore, B gets D0
+        a.bouts++; b.bouts++
+        a.victories++
+        a.touchesScored += phase.maxScore
+        b.touchesReceived += phase.maxScore
+      } else {
+        a.bouts++; b.bouts++
+        a.touchesScored += bout.scoreA ?? 0
+        a.touchesReceived += bout.scoreB ?? 0
+        b.touchesScored += bout.scoreB ?? 0
+        b.touchesReceived += bout.scoreA ?? 0
+        if (bout.resultA === 'V') a.victories++
+        if (bout.resultB === 'V') b.victories++
+      }
     }
   }
 

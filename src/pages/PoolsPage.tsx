@@ -5,7 +5,7 @@ import type { PoolPhase, PoolBout, Pool, Fencer, Referee } from '../types'
 
 export default function PoolsPage() {
   const { tournamentId, contestId, stageId } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
-  const { tournaments, allocatePoolPhase, setPoolBoutScore, lockPoolPhase, unlockPoolPhase, fillRandomPoolBouts } = useStore()
+  const { tournaments, allocatePoolPhase, setPoolBoutScore, setPoolBoutAbsent, lockPoolPhase, unlockPoolPhase, fillRandomPoolBouts } = useStore()
   const tournament = tournaments.find(t => t.id === tournamentId)
   const contest = tournament?.contests.find(c => c.id === contestId)
   const stage = contest?.stages.find(s => s.id === stageId) as PoolPhase | undefined
@@ -45,7 +45,6 @@ export default function PoolsPage() {
     if (isNaN(sa) || isNaN(sb)) return
     if (sa > stage.maxScore || sb > stage.maxScore) return
     if (sa === sb) return
-    if (sa !== stage.maxScore && sb !== stage.maxScore) return
     await setPoolBoutScore(tournamentId!, contestId!, stageId!, pool.id, boutId, sa, sb)
     setEditingBout(null)
     setScoreA('')
@@ -201,6 +200,7 @@ export default function PoolsPage() {
                       onEdit={() => startEdit(bout)}
                       onSave={() => saveBout(bout.id)}
                       onCancel={() => setEditingBout(null)}
+                      onAbsent={(side) => setPoolBoutAbsent(tournamentId!, contestId!, stageId!, pool.id, bout.id, side)}
                       disabled={stage.status === 'done'}
                     />
                   ))}
@@ -386,7 +386,7 @@ function PoolScoreSheet({ pool, stage, fencerMap, contest, tournament, referees 
   )
 }
 
-function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBInput, onScoreAChange, onScoreBChange, onEdit, onSave, onCancel, disabled }: {
+function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBInput, onScoreAChange, onScoreBChange, onEdit, onSave, onCancel, onAbsent, disabled }: {
   bout: PoolBout
   nameA: string
   nameB: string
@@ -399,6 +399,7 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
   onEdit: () => void
   onSave: () => void
   onCancel: () => void
+  onAbsent: (side: 'A' | 'B') => void
   disabled: boolean
 }) {
   const scored = bout.scoreA !== undefined && bout.scoreB !== undefined
@@ -416,7 +417,7 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
   })()
 
   return (
-    <div className={`rounded-lg border p-2 ${scored ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-200'} ${bout.resultA === 'A' ? 'opacity-50' : ''}`}>
+    <div className={`rounded-lg border p-2 ${scored ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-200'} ${bout.resultA === 'A' || bout.resultB === 'A' ? 'opacity-60' : ''}`}>
       <div className="text-xs text-gray-400 mb-1">Match {bout.order}</div>
       {isEditing ? (
         <div className="space-y-1">
@@ -437,15 +438,19 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
           {inputError && (
             <p className="text-xs text-red-600 text-center">{inputError}</p>
           )}
+          <div className="flex justify-center gap-2 pt-1">
+            <button className="text-xs text-red-500 border border-red-200 rounded px-2 py-0.5 hover:bg-red-50" onClick={() => { onAbsent('A'); onCancel() }}>Absent ← {nameA}</button>
+            <button className="text-xs text-red-500 border border-red-200 rounded px-2 py-0.5 hover:bg-red-50" onClick={() => { onAbsent('B'); onCancel() }}>Absent → {nameB}</button>
+          </div>
         </div>
       ) : (
-        <div className="flex items-center gap-2 cursor-pointer" onClick={disabled ? undefined : onEdit}>
-          <span className={`text-sm flex-1 text-right ${bout.resultA === 'V' ? 'font-bold text-green-700' : 'text-gray-700'}`}>{nameA}</span>
-          <span className="text-sm font-mono font-bold text-gray-800 w-12 text-center">
-            {scored ? `${bout.scoreA} - ${bout.scoreB}` : '— —'}
+        <div className="flex items-center gap-2">
+          <span className={`text-sm flex-1 text-right ${bout.resultA === 'V' ? 'font-bold text-green-700' : bout.resultA === 'A' ? 'text-red-500 italic' : 'text-gray-700'}`}>{nameA}{bout.resultA === 'A' ? ' (ABS)' : ''}</span>
+          <span className="text-sm font-mono font-bold text-gray-800 w-16 text-center">
+            {scored ? `${bout.scoreA} — ${bout.scoreB}` : '— —'}
           </span>
-          <span className={`text-sm flex-1 ${bout.resultB === 'V' ? 'font-bold text-green-700' : 'text-gray-700'}`}>{nameB}</span>
-          {!disabled && <span className="text-gray-300 text-xs">✏️</span>}
+          <span className={`text-sm flex-1 ${bout.resultB === 'V' ? 'font-bold text-green-700' : bout.resultB === 'A' ? 'text-red-500 italic' : 'text-gray-700'}`}>{nameB}{bout.resultB === 'A' ? ' (ABS)' : ''}</span>
+          {!disabled && <span className="text-gray-300 text-xs cursor-pointer" onClick={onEdit}>✏️</span>}
         </div>
       )}
     </div>

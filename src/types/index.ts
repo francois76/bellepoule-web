@@ -95,6 +95,7 @@ export interface BarragePhase {
   type: 'barrage'
   name: string
   status: StageStatus
+  maxScore: number
   bouts: PoolBout[]
 }
 
