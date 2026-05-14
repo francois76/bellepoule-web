@@ -59,6 +59,14 @@ export default function PoolsPage() {
     setScoreB('')
   }
 
+  async function quickSaveBout(boutId: string, sa: number, sb: number) {
+    if (!stage) return
+    await setPoolBoutScore(tournamentId!, contestId!, stageId!, pool.id, boutId, sa, sb)
+    setEditingBout(null)
+    setScoreA('')
+    setScoreB('')
+  }
+
   function startEdit(bout: PoolBout) {
     setEditingBout(bout.id)
     setScoreA(String(bout.scoreA ?? ''))
@@ -209,6 +217,7 @@ export default function PoolsPage() {
                       onSave={() => saveBout(bout.id)}
                       onCancel={() => setEditingBout(null)}
                       onAbsent={(side) => setPoolBoutAbsent(tournamentId!, contestId!, stageId!, pool.id, bout.id, side)}
+                      onQuickScore={(sa, sb) => quickSaveBout(bout.id, sa, sb)}
                       disabled={stage.status === 'done'}
                     />
                   ))}
@@ -515,7 +524,7 @@ function PoolScoreSheet({ pool, stage, participantMap, contest, tournament, refe
   )
 }
 
-function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBInput, onScoreAChange, onScoreBChange, onEdit, onSave, onCancel, onAbsent, disabled }: {
+function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBInput, onScoreAChange, onScoreBChange, onEdit, onSave, onCancel, onAbsent, onQuickScore, disabled }: {
   bout: PoolBout
   nameA: string
   nameB: string
@@ -529,9 +538,24 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
   onSave: () => void
   onCancel: () => void
   onAbsent: (side: 'A' | 'B') => void
+  onQuickScore: (sa: number, sb: number) => void
   disabled: boolean
 }) {
+  const [openSide, setOpenSide] = useState<'A' | 'B' | null>(null)
+
   const scored = bout.scoreA !== undefined && bout.scoreB !== undefined
+
+  const quickScoresA = Array.from({ length: maxScore }, (_, i) => ({ sa: maxScore, sb: i }))
+  const quickScoresB = Array.from({ length: maxScore }, (_, i) => ({ sa: i, sb: maxScore }))
+
+  function handleQuick(sa: number, sb: number) {
+    onQuickScore(sa, sb)
+    setOpenSide(null)
+  }
+
+  function toggleSide(side: 'A' | 'B') {
+    setOpenSide(prev => prev === side ? null : side)
+  }
 
   const inputError = (() => {
     if (!isEditing) return null
@@ -541,28 +565,65 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
     if (sa < 0 || sb < 0) return 'Score négatif impossible'
     if (sa > maxScore || sb > maxScore) return `Score max\u00a0: ${maxScore}`
     if (sa === sb) return 'Égalité impossible en poule'
-    // FIE art. t.93 : résultat "à la montre" autorisé — ex. V4-3 dans une poule à 5
     return null
   })()
 
+  const QuickPopup = ({ scores, colorClass }: { scores: { sa: number; sb: number }[]; colorClass: string }) => (
+    <div className="absolute top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-xl p-1.5 flex flex-wrap gap-1" style={{ minWidth: '6rem' }}>
+      {scores.map(({ sa, sb }) => (
+        <button key={`${sa}-${sb}`}
+          className={`text-xs px-1.5 py-0.5 rounded font-mono whitespace-nowrap transition-colors ${colorClass}`}
+          onClick={() => handleQuick(sa, sb)}>
+          {sa}-{sb}
+        </button>
+      ))}
+    </div>
+  )
+
   return (
     <div className={`rounded-lg border p-2 ${scored ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-200'} ${bout.resultA === 'A' || bout.resultB === 'A' ? 'opacity-60' : ''}`}>
+      {/* Backdrop to close popup on outside click */}
+      {openSide && <div className="fixed inset-0 z-10" onClick={() => setOpenSide(null)} />}
       <div className="text-xs text-gray-400 mb-1">Match {bout.order}</div>
       {isEditing ? (
         <div className="space-y-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium flex-1 text-right">{nameA}</span>
+          <div className="flex items-center gap-1 flex-wrap">
+            {/* Trigger bulle : A gagne */}
+            {!disabled && (
+              <div className="relative shrink-0">
+                <button
+                  className="text-xs px-1.5 py-0.5 rounded border font-medium bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                  onClick={() => toggleSide('A')}
+                  title="Scores rapides — gauche gagne">
+                  V ▾
+                </button>
+                {openSide === 'A' && <QuickPopup scores={quickScoresA} colorClass="bg-green-100 text-green-800 hover:bg-green-200" />}
+              </div>
+            )}
+            <span className="text-sm font-medium flex-1 text-right truncate min-w-0">{nameA}</span>
             <input type="number" min="0" max={maxScore} value={scoreAInput}
               onChange={e => onScoreAChange(e.target.value)}
-              className={`w-12 text-center border rounded px-1 py-0.5 text-sm ${inputError ? 'border-red-400 bg-red-50' : ''}`}
+              className={`w-12 text-center border rounded px-1 py-0.5 text-sm shrink-0 ${inputError ? 'border-red-400 bg-red-50' : ''}`}
               autoFocus />
-            <span className="text-gray-400 font-bold">—</span>
+            <span className="text-gray-400 font-bold shrink-0">—</span>
             <input type="number" min="0" max={maxScore} value={scoreBInput}
               onChange={e => onScoreBChange(e.target.value)}
-              className={`w-12 text-center border rounded px-1 py-0.5 text-sm ${inputError ? 'border-red-400 bg-red-50' : ''}`} />
-            <span className="text-sm font-medium flex-1">{nameB}</span>
-            <button className="btn-primary text-xs py-0.5 px-2 disabled:opacity-40" onClick={onSave} disabled={!!inputError}>✓</button>
-            <button className="btn-secondary text-xs py-0.5 px-2" onClick={onCancel}>✕</button>
+              className={`w-12 text-center border rounded px-1 py-0.5 text-sm shrink-0 ${inputError ? 'border-red-400 bg-red-50' : ''}`} />
+            <span className="text-sm font-medium flex-1 truncate min-w-0">{nameB}</span>
+            <button className="btn-primary text-xs py-0.5 px-2 disabled:opacity-40 shrink-0" onClick={onSave} disabled={!!inputError}>✓</button>
+            <button className="btn-secondary text-xs py-0.5 px-2 shrink-0" onClick={onCancel}>✕</button>
+            {/* Trigger bulle : B gagne */}
+            {!disabled && (
+              <div className="relative shrink-0">
+                <button
+                  className="text-xs px-1.5 py-0.5 rounded border font-medium bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                  onClick={() => toggleSide('B')}
+                  title="Scores rapides — droite gagne">
+                  ▾ V
+                </button>
+                {openSide === 'B' && <QuickPopup scores={quickScoresB} colorClass="bg-blue-100 text-blue-800 hover:bg-blue-200" />}
+              </div>
+            )}
           </div>
           {inputError && (
             <p className="text-xs text-red-600 text-center">{inputError}</p>
@@ -573,13 +634,37 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-2">
-          <span className={`text-sm flex-1 text-right ${bout.resultA === 'V' ? 'font-bold text-green-700' : bout.resultA === 'A' ? 'text-red-500 italic' : 'text-gray-700'}`}>{nameA}{bout.resultA === 'A' ? ' (ABS)' : ''}</span>
-          <span className="text-sm font-mono font-bold text-gray-800 w-16 text-center">
+        <div className="flex items-center gap-1">
+          {/* Trigger bulle : A gagne */}
+          {!disabled && (
+            <div className="relative shrink-0">
+              <button
+                className="text-xs px-1.5 py-0.5 rounded border font-medium bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                onClick={() => toggleSide('A')}
+                title="Scores rapides — gauche gagne">
+                V ▾
+              </button>
+              {openSide === 'A' && <QuickPopup scores={quickScoresA} colorClass="bg-green-100 text-green-800 hover:bg-green-200" />}
+            </div>
+          )}
+          <span className={`text-sm flex-1 text-right truncate min-w-0 ${bout.resultA === 'V' ? 'font-bold text-green-700' : bout.resultA === 'A' ? 'text-red-500 italic' : 'text-gray-700'}`}>{nameA}{bout.resultA === 'A' ? ' (ABS)' : ''}</span>
+          <span className="text-sm font-mono font-bold text-gray-800 w-16 text-center shrink-0">
             {scored ? `${bout.scoreA} — ${bout.scoreB}` : '— —'}
           </span>
-          <span className={`text-sm flex-1 ${bout.resultB === 'V' ? 'font-bold text-green-700' : bout.resultB === 'A' ? 'text-red-500 italic' : 'text-gray-700'}`}>{nameB}{bout.resultB === 'A' ? ' (ABS)' : ''}</span>
-          {!disabled && <span className="text-gray-300 text-xs cursor-pointer" onClick={onEdit}>✏️</span>}
+          <span className={`text-sm flex-1 truncate min-w-0 ${bout.resultB === 'V' ? 'font-bold text-green-700' : bout.resultB === 'A' ? 'text-red-500 italic' : 'text-gray-700'}`}>{nameB}{bout.resultB === 'A' ? ' (ABS)' : ''}</span>
+          {/* Trigger bulle : B gagne */}
+          {!disabled && (
+            <div className="relative shrink-0">
+              <button
+                className="text-xs px-1.5 py-0.5 rounded border font-medium bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                onClick={() => toggleSide('B')}
+                title="Scores rapides — droite gagne">
+                ▾ V
+              </button>
+              {openSide === 'B' && <QuickPopup scores={quickScoresB} colorClass="bg-blue-100 text-blue-800 hover:bg-blue-200" />}
+            </div>
+          )}
+          {!disabled && <span className="text-gray-300 text-xs cursor-pointer shrink-0 ml-1" onClick={onEdit}>✏️</span>}
         </div>
       )}
     </div>
