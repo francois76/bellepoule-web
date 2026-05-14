@@ -31,6 +31,7 @@ export default function TableauPage() {
   const [scoreA, setScoreA] = useState('')
   const [scoreB, setScoreB] = useState('')
   const [printingRound, setPrintingRound] = useState<number | null>(null)
+  const [expandedRounds, setExpandedRounds] = useState<Set<number> | null>(null)
 
   if (!tournament || !contest || !stage || stage.type !== 'tableau') return <div className="text-red-500">Tableau introuvable</div>
 
@@ -48,19 +49,18 @@ export default function TableauPage() {
   // last locked = smallest round number (most recently locked in T32→T16→... progression)
   const lastLockedRound = lockedRounds.length > 0 ? Math.min(...lockedRounds) : null
 
-  // Compute current active round: first round (highest value) where at least one playable bout has no result
+  // Compute current active round: first non-locked round with real (non-BYE) bouts
   const rounds = Array.from(new Set(stage.bouts.map(b => b.round))).sort((a, b) => b - a)
-  const activeRound = rounds.find(round => {
-    const bouts = stage.bouts.filter(b => b.round === round)
-    return bouts.some(b => b.fencerAId && b.fencerBId && !b.winnerId)
-  })
+  const activeRound = rounds.find(round =>
+    !lockedRounds.includes(round) &&
+    stage.bouts.some(b => b.round === round && b.fencerAId && b.fencerBId)
+  )
 
   // All non-BYE bouts in the active round, and whether they are all done
   const activeBouts = activeRound ? stage.bouts.filter(b => b.round === activeRound && b.fencerAId && b.fencerBId) : []
   const activeAllScored = activeBouts.length > 0 && activeBouts.every(b => b.winnerId)
 
   // Overall: all non-BYE bouts have a winner → tableau complete
-  const allDone = stage.bouts.filter(b => b.fencerAId && b.fencerBId).every(b => b.winnerId)
 
   function startEdit(bout: TableauBout) {
     setEditingBout(bout.id)
@@ -94,6 +94,28 @@ export default function TableauPage() {
     setTimeout(() => { window.print(); setPrintingRound(null) }, 80)
   }
 
+  // null = default: only active round expanded
+  const effectiveExpanded: Set<number> = expandedRounds ?? new Set(activeRound ? [activeRound] : [])
+
+  function toggleRound(round: number) {
+    const next = new Set(effectiveExpanded)
+    if (next.has(round)) next.delete(round); else next.add(round)
+    setExpandedRounds(next)
+  }
+
+  async function handleLockRound(round: number) {
+    const finalRound = Math.min(...rounds)
+    if (round === finalRound) {
+      // Locking the finale closes the whole phase
+      await lockTableauPhase(tournamentId!, contestId!, stageId!)
+    } else {
+      await lockTableauRound(tournamentId!, contestId!, stageId!, round)
+      // collapse all, expand the next round (round / 2)
+      const nextRound = round / 2
+      setExpandedRounds(new Set(rounds.includes(nextRound) ? [nextRound] : []))
+    }
+  }
+
   return (
     <div className="space-y-5">
       {/* Override @page to landscape for tableau printing, with extra bottom margin for browser footer */}
@@ -120,12 +142,6 @@ export default function TableauPage() {
           </div>
         </div>
         <div className="print:hidden flex gap-2 flex-wrap">
-          {stage.status === 'running' && allDone && (
-            <button className="btn-primary bg-green-600 hover:bg-green-700"
-              onClick={() => lockTableauPhase(tournamentId!, contestId!, stageId!)}>
-              ✅ Clôturer le tableau
-            </button>
-          )}
           {stage.status === 'done' && (
             <>
               <button className="btn-secondary" onClick={() => window.print()}>🖨️ Imprimer le tableau</button>
@@ -165,12 +181,17 @@ export default function TableauPage() {
           const isLastLocked = round === lastLockedRound
           const realBouts = roundBouts.filter(b => b.fencerAId && b.fencerBId)
           const allRoundScored = realBouts.length > 0 && realBouts.every(b => b.winnerId)
+          const isExpanded = effectiveExpanded.has(round)
           return (
             <div key={round}>
               <div className="flex items-center gap-2 mb-3 flex-wrap">
-                <h2 className={`font-semibold text-lg ${isActive ? 'text-blue-700' : isLocked ? 'text-gray-400' : 'text-gray-600'}`}>
-                  {label}{isLocked && <span className="ml-2 text-xs font-normal">🔒</span>}
-                </h2>
+                <button
+                  className={`flex items-center gap-2 font-semibold text-lg text-left hover:opacity-80 transition-opacity ${isActive ? 'text-blue-700' : isLocked ? 'text-gray-400' : 'text-gray-600'}`}
+                  onClick={() => toggleRound(round)}
+                >
+                  <span className="text-sm">{isExpanded ? '▾' : '▸'}</span>
+                  {label}{isLocked && <span className="ml-1 text-xs font-normal">🔒</span>}
+                </button>
                 <div className="flex gap-2 ml-auto">
                   {import.meta.env.DEV && stage.status === 'running' && !isLocked && !prevRoundOpen && realBouts.some(b => !b.winnerId) && (
                     <button className="text-xs py-1 px-2 rounded border border-orange-300 text-orange-700 hover:bg-orange-50 transition-colors"
@@ -186,7 +207,7 @@ export default function TableauPage() {
                   )}
                   {stage.status === 'running' && !isLocked && allRoundScored && (
                     <button className="text-xs py-1 px-2 rounded border border-green-300 text-green-700 hover:bg-green-50 transition-colors"
-                      onClick={() => lockTableauRound(tournamentId!, contestId!, stageId!, round)}>
+                      onClick={() => handleLockRound(round)}>
                       🔒 Clôturer ce round
                     </button>
                   )}
@@ -198,6 +219,7 @@ export default function TableauPage() {
                   )}
                 </div>
               </div>
+              {isExpanded && (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {roundBouts.map(bout => (
                   <BracketBout key={bout.id}
@@ -218,6 +240,7 @@ export default function TableauPage() {
                   />
                 ))}
               </div>
+              )}
             </div>
           )
         })}
