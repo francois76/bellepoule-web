@@ -51,6 +51,7 @@ interface AppState {
   addBarrageBout: (tournamentId: string, contestId: string, stageId: string, fencerAId: string, fencerBId: string) => Promise<void>
   setBarrageBoutScore: (tournamentId: string, contestId: string, stageId: string, boutId: string, scoreA: number, scoreB: number) => Promise<void>
   lockBarragePhase: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
+  unlockBarragePhase: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
 
   addTableauPhase: (tournamentId: string, contestId: string, name: string, size: TableauSize, maxScore: number, hasThirdPlace: boolean) => Promise<void>
   setTableauBoutScore: (tournamentId: string, contestId: string, stageId: string, boutId: string, scoreA: number, scoreB: number) => Promise<void>
@@ -596,6 +597,21 @@ export const useStore = create<AppState>((set, get) => ({
       stages: c.stages.map(s =>
         s.id === stageId && s.type === 'barrage'
           ? { ...s, status: 'done' as const }
+          : s
+      ),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
+  unlockBarragePhase: async (tournamentId, contestId, stageId) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      stages: c.stages.map(s =>
+        s.id === stageId && s.type === 'barrage'
+          ? { ...s, status: 'running' as const }
           : s
       ),
     }))

@@ -5,7 +5,7 @@ import type { BarragePhase } from '../types'
 
 export default function BarragePage() {
   const { tournamentId, contestId, stageId } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
-  const { tournaments, addBarrageBout, setBarrageBoutScore, lockBarragePhase } = useStore()
+  const { tournaments, addBarrageBout, setBarrageBoutScore, lockBarragePhase, unlockBarragePhase } = useStore()
 
   const tournament = tournaments.find(t => t.id === tournamentId)
   const contest = tournament?.contests.find(c => c.id === contestId)
@@ -60,6 +60,7 @@ export default function BarragePage() {
   }
 
   const presentFencers = contest.fencers.filter(f => f.present)
+  const allScored = stage.bouts.length > 0 && stage.bouts.every(b => b.scoreA !== undefined && b.scoreB !== undefined)
 
   return (
     <div className="space-y-5">
@@ -88,11 +89,19 @@ export default function BarragePage() {
               <button className="btn-secondary" onClick={() => setAddBoutModal(true)}>
                 + Ajouter un match
               </button>
-              <button className="btn-primary bg-green-600 hover:bg-green-700"
-                onClick={() => lockBarragePhase(tournamentId!, contestId!, stageId!)}>
+              <button className="btn-primary bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => lockBarragePhase(tournamentId!, contestId!, stageId!)}
+                disabled={!allScored}
+                title={!allScored ? 'Tous les scores doivent être saisis avant de clôturer' : undefined}>
                 ✅ Terminer le barrage
               </button>
             </>
+          )}
+          {stage.status === 'done' && (
+            <button className="btn-secondary"
+              onClick={() => unlockBarragePhase(tournamentId!, contestId!, stageId!)}>
+              🔓 Rouvrir le barrage
+            </button>
           )}
         </div>
       </div>

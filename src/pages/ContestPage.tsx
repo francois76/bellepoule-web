@@ -54,7 +54,7 @@ export default function ContestPage() {
 
   function openPoolModal() {
     const n = contest!.stages.filter(s => s.type === 'pool').length + 1
-    setPoolForm({ name: `Tour de poules ${n}`, maxScore: suggestedMaxScore(contest?.category, 'pool'), promotionPercent: '75' })
+    setPoolForm({ name: `Tour de poules ${n}`, maxScore: suggestedMaxScore(contest?.category, 'pool'), promotionPercent: '100' })
     setPoolModal(true)
   }
 
