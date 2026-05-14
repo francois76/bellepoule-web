@@ -109,9 +109,46 @@ body {
 .pool-sheet-referee-name {
   font-weight: 600;
 }
-.pool-sheet-signature {
-  white-space: nowrap;
-  color: #555;
+
+/* Signature zone at the bottom of each pool sheet */
+.pool-sheet-signatures {
+  margin-top: 12px;
+  border-top: 1px solid #ccc;
+  padding-top: 6px;
+}
+.pool-sheet-signatures-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: #444;
+  margin: 0 0 4px;
+}
+.pool-sheet-signatures table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+.pool-sheet-signatures td {
+  padding: 3px 4px;
+  border: 1px solid #bbb;
+  vertical-align: middle;
+}
+.pool-sheet-signatures .sig-num {
+  width: 28px;
+  text-align: center;
+  font-weight: 600;
+  color: #333;
+}
+.pool-sheet-signatures .sig-name {
+  width: 35%;
+  color: #222;
+}
+.pool-sheet-signatures .sig-line {
+  /* empty cell for handwritten signature */
+  min-width: 120px;
+}
+.pool-sheet-signatures .sig-ref td {
+  background: #f0f0f0;
+  font-weight: 600;
 }
 
 .pool-grid-scroll {
@@ -132,6 +169,9 @@ body {
   /* Pool sheet page breaks */
   .pool-sheet { break-after: page; }
   .pool-sheet:last-child { break-after: auto; }
+
+  /* Pool sheets always start on a new page (after the classification table) */
+  .pool-sheets-wrapper { break-before: page; }
 
   /* Pool sheets wrapper: always visible in print regardless of screen toggle */
   .pool-sheets-wrapper { display: block !important; }

@@ -76,7 +76,7 @@ export default function PoolsPage() {
         <span className="text-gray-800 font-medium">{stage.name}</span>
       </div>
 
-      <div className="flex items-center justify-between flex-wrap gap-2">
+      <div className={`flex items-center justify-between flex-wrap gap-2${stage.status !== 'pending' ? ' print:hidden' : ''}`}>
         <div>
           <h1 className="text-2xl font-bold text-gray-800">{stage.name}</h1>
           <div className="flex gap-3 mt-1 text-xs text-gray-500">
@@ -213,6 +213,27 @@ export default function PoolsPage() {
 
       {/* Results table */}
       {stage.status === 'done' && stage.results.length > 0 && (
+        <div>
+          {/* Print-only recap header before the classification */}
+          <div className="hidden print:block mb-3">
+            <h2 className="text-base font-bold text-gray-800">{stage.name}</h2>
+            <p className="text-xs text-gray-600">
+              {[WEAPON_LABEL[contest.weapon] ?? contest.weapon,
+                GENDER_LABEL[contest.gender] ?? contest.gender,
+                contest.category].filter(Boolean).join(' · ')}
+            </p>
+            <p className="text-xs text-gray-500">
+              {[contest.date
+                  ? new Date(contest.date).toLocaleDateString('fr-FR')
+                  : tournament.startDate
+                    ? new Date(tournament.startDate).toLocaleDateString('fr-FR')
+                    : '',
+                contest.location ?? tournament.location ?? ''].filter(Boolean).join(' — ')}
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Score max&nbsp;: {stage.maxScore} · Qualification&nbsp;: {stage.promotionPercent}&nbsp;% · {stage.pools.length} poule{stage.pools.length > 1 ? 's' : ''}
+            </p>
+          </div>
         <div className="card overflow-x-auto">
           <h2 className="font-semibold text-gray-700 mb-3">Classement de la phase</h2>
           <table className="w-full text-sm">
@@ -247,6 +268,7 @@ export default function PoolsPage() {
               ))}
             </tbody>
           </table>
+        </div>
         </div>
       )}
 
@@ -338,7 +360,6 @@ function PoolScoreSheet({ pool, stage, fencerMap, contest, tournament, referees 
         <div className="pool-sheet-meta-right">
           {pool.piste && <span>Piste&nbsp;{pool.piste}</span>}
           <span className="pool-sheet-referee">Arbitre&nbsp;: <span className="pool-sheet-referee-name">{refName || '________________________'}</span></span>
-          <span className="pool-sheet-signature">Signature&nbsp;: ________________________</span>
         </div>
       </div>
       <div className="pool-grid-scroll">
@@ -382,6 +403,29 @@ function PoolScoreSheet({ pool, stage, fencerMap, contest, tournament, referees 
           </tbody>
         </table>
       </div>
+
+      {/* Zone de signatures : arbitre + chaque tireur (poules ouvertes uniquement) */}
+      {stage.status === 'running' && (
+      <div className="pool-sheet-signatures">
+        <p className="pool-sheet-signatures-title">Signatures des tireurs et de l’arbitre :</p>
+        <table>
+          <tbody>
+            <tr className="sig-ref">
+              <td className="sig-num">Arb.</td>
+              <td className="sig-name">{refName || '________________________'}</td>
+              <td className="sig-line"></td>
+            </tr>
+            {fencers.map(f => (
+              <tr key={f.id}>
+                <td className="sig-num">{f.num}</td>
+                <td className="sig-name">{f.name}</td>
+                <td className="sig-line"></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      )}
     </div>
   )
 }
