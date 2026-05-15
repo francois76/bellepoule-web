@@ -33,6 +33,7 @@ interface AppState {
 
   // Teams (team events)
   addTeam: (tournamentId: string, contestId: string, team: Omit<Team, 'id'>) => Promise<Team>
+  updateTeam: (tournamentId: string, contestId: string, team: Team) => Promise<void>
   removeTeam: (tournamentId: string, contestId: string, teamId: string) => Promise<void>
   addFencerToTeam: (tournamentId: string, contestId: string, teamId: string, fencerId: string) => Promise<void>
   setTeamPresence: (tournamentId: string, contestId: string, teamId: string, present: boolean) => Promise<void>
@@ -266,6 +267,17 @@ export const useStore = create<AppState>((set, get) => ({
     await saveTournament(updated)
     set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
     return team
+  },
+
+  updateTeam: async (tournamentId, contestId, team) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      teams: c.teams.map(tm => tm.id === team.id ? team : tm),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
   },
 
   removeTeam: async (tournamentId, contestId, teamId) => {
