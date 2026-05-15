@@ -42,10 +42,10 @@ export default function PoolsPage() {
 
   // Fencers already allocated in any pool of this stage
   const allocatedIds = new Set(stage.pools.flatMap(p => p.fencerIds))
-  // Eligible latecomers: present but not yet in any pool
+  // Eligible latecomers: registered but not yet in any pool (regardless of present flag)
   const eligibleLatecomers = contest.isTeamEvent
-    ? contest.teams.filter(t => t.present && !allocatedIds.has(t.id))
-    : contest.fencers.filter(f => f.present && !allocatedIds.has(f.id))
+    ? contest.teams.filter(t => !allocatedIds.has(t.id))
+    : contest.fencers.filter(f => !allocatedIds.has(f.id))
 
   function openAllocateModal() {
     const defaultCount = Math.ceil(presentCount / 6)

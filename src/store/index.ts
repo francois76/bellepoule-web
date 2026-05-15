@@ -512,6 +512,9 @@ export const useStore = create<AppState>((set, get) => ({
 
     const updated = mutateContest(t, contestId, c => ({
       ...c,
+      // Mark latecomer as present (they may have been absent at check-in)
+      fencers: c.fencers.map(f => f.id === participantId ? { ...f, present: true } : f),
+      teams: c.teams?.map(tm => tm.id === participantId ? { ...tm, present: true } : tm),
       stages: c.stages.map(s => s.id === stageId && s.type === 'pool'
         ? { ...s, pools: updatedPools } as PoolPhase
         : s),
