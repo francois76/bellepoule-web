@@ -630,10 +630,12 @@ export const useStore = create<AppState>((set, get) => ({
     const seededFencers = getSeedOrder(contest)
     const hasThirdPlace = fencedPlaces !== 'none'
     const bouts = buildBracket(size, seededFencers, hasThirdPlace)
-    // Auto-lock rounds that have zero real bouts (all byes): they'd block the next round otherwise
-    const roundsWithRealBouts = new Set(bouts.filter(b => b.fencerAId && b.fencerBId).map(b => b.round))
-    const allRounds = Array.from(new Set(bouts.map(b => b.round)))
-    const autoLockedRounds = allRounds.filter(r => !roundsWithRealBouts.has(r))
+    // Auto-lock rounds where propagateByes already resolved every bout (100% byes, no real match to play)
+    const allRounds = Array.from(new Set(bouts.filter(b => !(b.round === 4 && b.boutIndex === 2)).map(b => b.round)))
+    const autoLockedRounds = allRounds.filter(r => {
+      const roundBouts = bouts.filter(b => b.round === r)
+      return roundBouts.length > 0 && roundBouts.every(b => !!b.winnerId)
+    })
     const phase: TableauPhase = {
       id: nanoid(),
       type: 'tableau',
