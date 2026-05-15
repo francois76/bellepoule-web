@@ -79,10 +79,23 @@ export default function CheckinPage() {
     if (key === 'club') return cmp(a.club ?? '', b.club ?? '', dir)
     if (key === 'birthYear') return cmp(a.birthYear, b.birthYear, dir)
     if (key === 'initialRank') return cmp(a.initialRank, b.initialRank, dir)
+    if (key === 'team') {
+      const teamA = contest.teams.find(t => t.fencerIds.includes(a.id))?.name ?? ''
+      const teamB = contest.teams.find(t => t.fencerIds.includes(b.id))?.name ?? ''
+      return cmp(teamA, teamB, dir)
+    }
     return 0
   })
 
-  const sortedTeams = [...contest.teams].sort((a, b) => {
+  const filteredTeams = contest.teams.filter(t =>
+    `${t.name} ${t.club ?? ''}`.toLowerCase().includes(filter.toLowerCase()) ||
+    t.fencerIds.some(id => {
+      const f = contest.fencers.find(f => f.id === id)
+      return f && `${f.lastName} ${f.firstName}`.toLowerCase().includes(filter.toLowerCase())
+    })
+  )
+
+  const sortedTeams = [...filteredTeams].sort((a, b) => {
     const { key, dir } = teamSort
     if (key === 'present') return cmp(a.present !== false ? 0 : 1, b.present !== false ? 0 : 1, dir)
     if (key === 'name') return cmp(a.name, b.name, dir)
@@ -605,7 +618,7 @@ export default function CheckinPage() {
                     <th className="px-4 py-2 text-left font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('present')}>Présent{sortArrow('present', fencerSort)}</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('lastName')}>Nom{sortArrow('lastName', fencerSort)}</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('firstName')}>Prénom{sortArrow('firstName', fencerSort)}</th>
-                    {contest.isTeamEvent && <th className="px-4 py-2 text-left font-medium text-gray-600 hidden sm:table-cell">Équipe</th>}
+                    {contest.isTeamEvent && <th className="px-4 py-2 text-left font-medium text-gray-600 hidden sm:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('team')}>Équipe{sortArrow('team', fencerSort)}</th>}
                     {displayConfig.club.visible && <th className="px-4 py-2 text-left font-medium text-gray-600 hidden sm:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('club')}>Club{sortArrow('club', fencerSort)}</th>}
                     {displayConfig.dateOfBirth.visible && <th className="px-4 py-2 text-left font-medium text-gray-600 hidden md:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('birthYear')}>Né{sortArrow('birthYear', fencerSort)}</th>}
                     {displayConfig.initialRank.visible && <th className="px-4 py-2 text-left font-medium text-gray-600 hidden md:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('initialRank')}>Rang{sortArrow('initialRank', fencerSort)}</th>}
