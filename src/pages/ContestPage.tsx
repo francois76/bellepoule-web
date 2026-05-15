@@ -109,7 +109,12 @@ export default function ContestPage() {
 
   function openTableauModal() {
     const lastPool = [...(contest!.stages ?? [])].reverse().find(s => s.type === 'pool') as PoolPhase | undefined
-    const qualifiedIds = lastPool?.results?.filter(r => r.status === 'qualified').map(r => r.fencerId) ?? []
+    const excludedFromPool = new Set(
+      Object.entries(lastPool?.fencerStatuses ?? {})
+        .filter(([, s]) => s === 'withdrawal' || s === 'excluded')
+        .map(([id]) => id)
+    )
+    const qualifiedIds = lastPool?.results?.filter(r => r.status === 'qualified' && !excludedFromPool.has(r.fencerId)).map(r => r.fencerId) ?? []
     const qualifiedCount = contest!.isTeamEvent
       ? qualifiedIds.filter(id => (contest!.teams ?? []).find(t => t.id === id)?.present !== false).length
       : qualifiedIds.filter(id => contest!.fencers.find(f => f.id === id)?.present !== false).length

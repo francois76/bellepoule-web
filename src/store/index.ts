@@ -630,6 +630,10 @@ export const useStore = create<AppState>((set, get) => ({
     const seededFencers = getSeedOrder(contest)
     const hasThirdPlace = fencedPlaces !== 'none'
     const bouts = buildBracket(size, seededFencers, hasThirdPlace)
+    // Auto-lock rounds that have zero real bouts (all byes): they'd block the next round otherwise
+    const roundsWithRealBouts = new Set(bouts.filter(b => b.fencerAId && b.fencerBId).map(b => b.round))
+    const allRounds = Array.from(new Set(bouts.map(b => b.round)))
+    const autoLockedRounds = allRounds.filter(r => !roundsWithRealBouts.has(r))
     const phase: TableauPhase = {
       id: nanoid(),
       type: 'tableau',
@@ -640,7 +644,7 @@ export const useStore = create<AppState>((set, get) => ({
       fencedPlaces,
       hasThirdPlace,
       bouts,
-      lockedRounds: [],
+      lockedRounds: autoLockedRounds,
     }
     const updated = mutateContest(t, contestId, c => ({ ...c, stages: [...c.stages, phase] }))
     await saveTournament(updated)
@@ -933,8 +937,14 @@ function computePoolResults(phase: PoolPhase): PoolStageResult[] {
 function getSeedOrder(contest: Contest): string[] {
   const lastPool = [...contest.stages].reverse().find(s => s.type === 'pool') as PoolPhase | undefined
   if (lastPool && lastPool.results.length > 0) {
+    // Exclude fencers who were forfait or excluded during the pool phase
+    const excludedFromPool = new Set(
+      Object.entries(lastPool.fencerStatuses ?? {})
+        .filter(([, s]) => s === 'withdrawal' || s === 'excluded')
+        .map(([id]) => id)
+    )
     const qualifiedIds = lastPool.results
-      .filter(r => r.status === 'qualified')
+      .filter(r => r.status === 'qualified' && !excludedFromPool.has(r.fencerId))
       .sort((a, b) => a.rank - b.rank)
       .map(r => r.fencerId)
     // Exclude participants who have declared forfait (present = false) since the pool was locked
