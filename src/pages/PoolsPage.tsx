@@ -19,11 +19,11 @@ export default function PoolsPage() {
   const [poolCountInput, setPoolCountInput] = useState('')
   const [seedingBalanced, setSeedingBalanced] = useState(true)
   const [showSheets, setShowSheets] = useState(false)
-  const [allocBySize, setAllocBySize] = useState(false)
   const [poolSizeInput, setPoolSizeInput] = useState('6')
   const [latecomerModal, setLatecomerModal] = useState(false)
   const [latecomerFencerId, setLatecomerFencerId] = useState('')
   const [statusMenuId, setStatusMenuId] = useState<string | null>(null)
+  const [statusMenuPos, setStatusMenuPos] = useState<{ top: number; right: number } | null>(null)
 
   if (!tournament || !contest || !stage || stage.type !== 'pool') return <div className="text-red-500">Phase introuvable</div>
 
@@ -48,7 +48,9 @@ export default function PoolsPage() {
     : contest.fencers.filter(f => f.present && !allocatedIds.has(f.id))
 
   function openAllocateModal() {
-    setPoolCountInput(String(Math.ceil(presentCount / 6)))
+    const defaultCount = Math.ceil(presentCount / 6)
+    setPoolCountInput(String(defaultCount))
+    setPoolSizeInput(String(Math.round(presentCount / defaultCount)))
     // Default to balanced for first round, non-balanced (par force) if a previous pool round exists
     const stageIdx = contest!.stages.findIndex(s => s.id === stageId)
     const hasPrevPool = contest!.stages.slice(0, stageIdx).some(s => s.type === 'pool' && s.status === 'done')
@@ -109,6 +111,24 @@ export default function PoolsPage() {
 
   return (
     <div className="space-y-5">
+      {/* Status dropdown menu — fixed positioning to avoid clip */}
+      {statusMenuId && statusMenuPos && (
+        <>
+          <div className="fixed inset-0 z-[9998]" onClick={() => { setStatusMenuId(null); setStatusMenuPos(null) }} />
+          <div className="fixed z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-max"
+            style={{ top: statusMenuPos.top, right: statusMenuPos.right }}>
+            {([['ok','✓ Présent(e)','text-green-700'],['withdrawal','🚑 Forfait','text-orange-700'],['excluded','⛔ Exclu(e)','text-red-700']] as [FencerPoolStatus, string, string][]).map(([s,label,cls]) => (
+              <button key={s} className={`block w-full text-left px-3 py-1.5 text-sm ${cls} hover:bg-gray-50`}
+                onClick={() => { setPoolFencerStatus(tournamentId!, contestId!, stageId!, statusMenuId, s, contest.autoScoreStuffing ?? true); setStatusMenuId(null); setStatusMenuPos(null) }}>
+                {label}
+              </button>
+            ))}
+            <div className="px-3 pt-1 pb-1.5 border-t border-gray-100 text-xs text-gray-400 max-w-xs">
+              Le remplissage auto des assauts non joués dépend du paramètre « remplissage auto » de la compétition.
+            </div>
+          </div>
+        </>
+      )}
       {/* Breadcrumb */}
       <div className="print:hidden flex items-center gap-2 text-sm text-gray-500 flex-wrap">
         <Link to="/" className="hover:text-blue-600">Tournois</Link>
@@ -205,44 +225,33 @@ export default function PoolsPage() {
             <h2 className="text-lg font-bold text-gray-800">Allouer les poules</h2>
             <p className="text-sm text-gray-500">{presentCount} {participantLabel} présent{contest.isTeamEvent ? 'es' : 's'}</p>
             <form onSubmit={handleAllocate} className="space-y-3">
-              {/* Toggle: par nombre / par taille */}
-              <div className="flex rounded-lg overflow-hidden border border-gray-200 text-sm">
-                <button type="button"
-                  className={`flex-1 py-1.5 font-medium transition-colors ${!allocBySize ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-                  onClick={() => setAllocBySize(false)}>Par nombre</button>
-                <button type="button"
-                  className={`flex-1 py-1.5 font-medium transition-colors ${allocBySize ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-                  onClick={() => setAllocBySize(true)}>Par taille</button>
-              </div>
-              {allocBySize ? (
-                <div>
-                  <label className="label">Taille cible par poule</label>
-                  <select className="input" value={poolSizeInput} onChange={e => {
-                    setPoolSizeInput(e.target.value)
-                    const cnt = poolCountFromSize(presentCount, parseInt(e.target.value))
-                    setPoolCountInput(String(cnt))
-                  }}>
-                    {[5,6,7,8].map(n => <option key={n} value={n}>{n} tireurs</option>)}
-                  </select>
-                  {poolCountInput && (
-                    <p className="text-xs text-blue-600 mt-1 font-medium">
-                      → {poolSizeDescription(presentCount, parseInt(poolCountInput))}
-                    </p>
-                  )}
-                </div>
-              ) : (
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">Nombre de poules</label>
                   <input className="input" type="number" min={1} max={presentCount}
                     value={poolCountInput}
-                    onChange={e => setPoolCountInput(e.target.value)}
+                    onChange={e => {
+                      setPoolCountInput(e.target.value)
+                      const cnt = parseInt(e.target.value)
+                      if (cnt > 0) setPoolSizeInput(String(Math.round(presentCount / cnt)))
+                    }}
                     required autoFocus />
-                  {poolCountInput && parseInt(poolCountInput) > 0 && (
-                    <p className="text-xs text-gray-400 mt-1">
-                      {poolSizeDescription(presentCount, parseInt(poolCountInput))}
-                    </p>
-                  )}
                 </div>
+                <div>
+                  <label className="label">Taille cible</label>
+                  <input className="input" type="number" min={1} max={presentCount}
+                    value={poolSizeInput}
+                    onChange={e => {
+                      setPoolSizeInput(e.target.value)
+                      const sz = parseInt(e.target.value)
+                      if (sz > 0) setPoolCountInput(String(poolCountFromSize(presentCount, sz)))
+                    }} />
+                </div>
+              </div>
+              {poolCountInput && parseInt(poolCountInput) > 0 && (
+                <p className="text-xs text-blue-600 font-medium">
+                  → {poolSizeDescription(presentCount, parseInt(poolCountInput))}
+                </p>
               )}
               <div>
                 <label className="label">Répartition</label>
@@ -352,19 +361,13 @@ export default function PoolsPage() {
                             <button
                               className={`text-xs font-medium ${statusColor} border border-current rounded px-1.5 py-0.5 hover:opacity-80`}
                               title={statusLabel}
-                              onClick={() => setStatusMenuId(statusMenuId === fId ? null : fId)}
+                              onClick={e => {
+                                if (statusMenuId === fId) { setStatusMenuId(null); setStatusMenuPos(null); return }
+                                const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect()
+                                setStatusMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+                                setStatusMenuId(fId)
+                              }}
                             >{statusIcon} {statusLabel}</button>
-                            {statusMenuId === fId && (
-                              <div className="absolute right-0 top-7 z-20 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-max">
-                                {([['ok','✓ Présent(e)','text-green-700'],['withdrawal','🚑 Forfait','text-orange-700'],['excluded','⛔ Exclu(e)','text-red-700']] as [FencerPoolStatus, string, string][]).map(([s,label,cls]) => (
-                                  <button key={s} className={`block w-full text-left px-3 py-1.5 text-sm ${cls} hover:bg-gray-50`}
-                                    onClick={() => { setPoolFencerStatus(tournamentId!, contestId!, stageId!, fId, s, contest?.autoScoreStuffing ?? true); setStatusMenuId(null) }}>
-                                    {label}
-                                  </button>
-                                ))}
-                                <div className="px-3 pt-1 pb-1 border-t border-gray-100 text-xs text-gray-400">Le remplissage auto des assauts dépend du paramètre « remplissage auto » de la compétition</div>
-                              </div>
-                            )}
                           </div>
                         )}
                         {stage.status === 'done' && fencerStatus !== 'ok' && (
@@ -723,6 +726,7 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
   const [popupPos, setPopupPos] = useState<{ top?: number; bottom?: number; left?: number; right?: number } | null>(null)
 
   const scored = bout.scoreA !== undefined && bout.scoreB !== undefined
+  const isAbsent = bout.resultA === 'A' || bout.resultB === 'A'
 
   const quickScoresA = Array.from({ length: maxScore }, (_, i) => ({ sa: maxScore, sb: i }))
   const quickScoresB = Array.from({ length: maxScore }, (_, i) => ({ sa: i, sb: maxScore }))
@@ -819,8 +823,8 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
         </div>
       ) : (
         <div className="flex items-center gap-1">
-          {/* Trigger bulle : A gagne */}
-          {!disabled && (
+          {/* Trigger bulle : A gagne — masqué si absent */}
+          {!disabled && !isAbsent && (
             <button
               className="text-xs px-1.5 py-0.5 rounded border font-medium bg-green-50 text-green-700 border-green-200 hover:bg-green-100 shrink-0"
               onClick={e => openPopup('A', e.currentTarget)}
@@ -833,8 +837,8 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
             {scored ? `${bout.scoreA} — ${bout.scoreB}` : '— —'}
           </span>
           <span className={`text-sm flex-1 truncate min-w-0 ${bout.resultB === 'V' ? 'font-bold text-green-700' : bout.resultB === 'A' ? 'text-red-500 italic' : 'text-gray-700'}`}>{nameB}{bout.resultB === 'A' ? ' (ABS)' : ''}</span>
-          {/* Trigger bulle : B gagne */}
-          {!disabled && (
+          {/* Trigger bulle : B gagne — masqué si absent */}
+          {!disabled && !isAbsent && (
             <button
               className="text-xs px-1.5 py-0.5 rounded border font-medium bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 shrink-0"
               onClick={e => openPopup('B', e.currentTarget)}
@@ -842,7 +846,7 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
               ▾ V
             </button>
           )}
-          {!disabled && <span className="text-gray-300 text-xs cursor-pointer shrink-0 ml-1" onClick={onEdit}>✏️</span>}
+          {!disabled && !isAbsent && <span className="text-gray-300 text-xs cursor-pointer shrink-0 ml-1" onClick={onEdit}>✏️</span>}
         </div>
       )}
     </div>

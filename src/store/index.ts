@@ -402,10 +402,12 @@ export const useStore = create<AppState>((set, get) => ({
     if (!phase || phase.type !== 'pool') return
 
     const shouldStuff = autoStuff && (status === 'withdrawal' || status === 'excluded')
+    const shouldClear = status === 'ok'
     const maxScore = phase.maxScore
 
     // If auto stuffing: fill all unplayed bouts of this participant
-    const updatedPools = shouldStuff
+    // If reverting to ok: clear all absent bouts involving this participant
+    const updatedPools = (shouldStuff || shouldClear)
       ? phase.pools.map(pool => {
           if (!pool.fencerIds.includes(participantId)) return pool
           return {
@@ -414,6 +416,14 @@ export const useStore = create<AppState>((set, get) => ({
               const isA = bout.fencerAId === participantId
               const isB = bout.fencerBId === participantId
               if (!isA && !isB) return bout
+
+              if (shouldClear) {
+                // Clear only bouts where this fencer was marked absent (resultA/B === 'A')
+                const wasAbsent = (isA && bout.resultA === 'A') || (isB && bout.resultB === 'A')
+                if (!wasAbsent) return bout
+                return { ...bout, scoreA: undefined, scoreB: undefined, resultA: undefined, resultB: undefined }
+              }
+
               // Only fill bouts that haven't been scored yet
               if (bout.resultA !== undefined && bout.resultB !== undefined) return bout
               if (isA) {
