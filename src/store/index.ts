@@ -1,8 +1,8 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
-import type { Tournament, Contest, Fencer, Referee, Team, PoolPhase, PoolBout, BarragePhase, TableauPhase, TableauBout, TableauSize, MatchResult } from '../types'
+import type { Tournament, Contest, Fencer, Referee, Team, PoolPhase, PoolBout, BarragePhase, TableauPhase, TableauBout, TableauSize, MatchResult, FencerPoolStatus, FencedPlaces } from '../types'
 import { getAllTournaments, saveTournament, deleteTournament } from '../db'
-import { allocatePools } from '../logic/pools'
+import { allocatePools, fieBoutOrder } from '../logic/pools'
 import { buildBracket, propagateByes } from '../logic/tableau'
 
 interface AppState {
@@ -42,6 +42,18 @@ interface AppState {
   addPoolPhase: (tournamentId: string, contestId: string, name: string, maxScore: number, promotionPercent: number) => Promise<void>
   removeStage: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
   allocatePoolPhase: (tournamentId: string, contestId: string, stageId: string, poolCount: number, seedingBalanced?: boolean) => Promise<void>
+  /**
+   * Change le statut d'un tireur dans une phase de poules.
+   * Si autoStuff=true et que le nouveau statut est 'withdrawal' ou 'excluded',
+   * remplit automatiquement tous les assauts non joués du tireur (score stuffing).
+   */
+  setPoolFencerStatus: (tournamentId: string, contestId: string, stageId: string, participantId: string, status: FencerPoolStatus, autoStuff?: boolean) => Promise<void>
+  /**
+   * Ajoute un retardataire (arrivé après le début des poules) à la plus petite poule.
+   * Les assauts déjà joués sans lui sont marqués V + score max pour ses adversaires (absent).
+   * Le retardataire reçoit D + 0 pour ces assauts passés.
+   */
+  addLatecomer: (tournamentId: string, contestId: string, stageId: string, participantId: string) => Promise<void>
   setPoolBoutScore: (tournamentId: string, contestId: string, stageId: string, poolId: string, boutId: string, scoreA: number, scoreB: number) => Promise<void>
   setPoolBoutAbsent: (tournamentId: string, contestId: string, stageId: string, poolId: string, boutId: string, absentSide: 'A' | 'B') => Promise<void>
   lockPoolPhase: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
@@ -54,7 +66,7 @@ interface AppState {
   lockBarragePhase: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
   unlockBarragePhase: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
 
-  addTableauPhase: (tournamentId: string, contestId: string, name: string, size: TableauSize, maxScore: number, hasThirdPlace: boolean) => Promise<void>
+  addTableauPhase: (tournamentId: string, contestId: string, name: string, size: TableauSize, maxScore: number, fencedPlaces: FencedPlaces) => Promise<void>
   setTableauBoutScore: (tournamentId: string, contestId: string, stageId: string, boutId: string, scoreA: number, scoreB: number) => Promise<void>
   lockTableauPhase: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
   unlockTableauPhase: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
@@ -380,6 +392,124 @@ export const useStore = create<AppState>((set, get) => ({
     set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
   },
 
+  // ── Statut tireur dans les poules ──────────────────────────────────────────
+
+  setPoolFencerStatus: async (tournamentId, contestId, stageId, participantId, status, autoStuff = true) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const contest = getContestOrThrow(t, contestId)
+    const phase = contest.stages.find(s => s.id === stageId) as PoolPhase | undefined
+    if (!phase || phase.type !== 'pool') return
+
+    const shouldStuff = autoStuff && (status === 'withdrawal' || status === 'excluded')
+    const maxScore = phase.maxScore
+
+    // If auto stuffing: fill all unplayed bouts of this participant
+    const updatedPools = shouldStuff
+      ? phase.pools.map(pool => {
+          if (!pool.fencerIds.includes(participantId)) return pool
+          return {
+            ...pool,
+            bouts: pool.bouts.map(bout => {
+              const isA = bout.fencerAId === participantId
+              const isB = bout.fencerBId === participantId
+              if (!isA && !isB) return bout
+              // Only fill bouts that haven't been scored yet
+              if (bout.resultA !== undefined && bout.resultB !== undefined) return bout
+              if (isA) {
+                return { ...bout, scoreA: 0, scoreB: maxScore, resultA: 'A' as MatchResult, resultB: 'V' as MatchResult }
+              } else {
+                return { ...bout, scoreA: maxScore, scoreB: 0, resultA: 'V' as MatchResult, resultB: 'A' as MatchResult }
+              }
+            }),
+          }
+        })
+      : phase.pools
+
+    const newStatuses = { ...(phase.fencerStatuses ?? {}), [participantId]: status }
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      stages: c.stages.map(s => s.id === stageId && s.type === 'pool'
+        ? { ...s, pools: updatedPools, fencerStatuses: newStatuses } as PoolPhase
+        : s),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
+  // ── Retardataire (latecomer) ────────────────────────────────────────────────
+
+  addLatecomer: async (tournamentId, contestId, stageId, participantId) => {
+    const { tournaments } = get()
+    const t = getTournamentOrThrow(tournaments, tournamentId)
+    const contest = getContestOrThrow(t, contestId)
+    const phase = contest.stages.find(s => s.id === stageId) as PoolPhase | undefined
+    if (!phase || phase.type !== 'pool') return
+
+    // Find the smallest pool (fewest fencers)
+    const targetPool = [...phase.pools].sort((a, b) => a.fencerIds.length - b.fencerIds.length)[0]
+    if (!targetPool) return
+
+    // Add fencer to that pool and generate new bouts for this fencer
+    const newFencerIds = [...targetPool.fencerIds, participantId]
+    const maxScore = phase.maxScore
+
+    // Compute which bouts already have scores (those are in the "past")
+    // The latecomer gets added: for each existing member, a new bout is created.
+    // Bouts with existing members that were already played: latecomer gets D+0, opponent V+maxScore.
+    // Bouts not yet played: normal bout with the latecomer.
+    const alreadyScoredOpponentIds = targetPool.bouts
+      .filter(b => b.resultA !== undefined || b.resultB !== undefined)
+      .flatMap(b => [b.fencerAId, b.fencerBId])
+      .filter(id => id !== participantId)
+
+    const existingOpponentIds = targetPool.fencerIds
+
+    // Determine which existing bouts are "in the past" by whether they have a result
+    // (heuristic: if more than half the bouts in the pool are done, consider those opponents "past")
+    const scoredBoutCount = targetPool.bouts.filter(b => b.resultA !== undefined).length
+    const pastOpponentIds = scoredBoutCount > 0 ? new Set(alreadyScoredOpponentIds) : new Set<string>()
+
+    const newBouts: PoolBout[] = existingOpponentIds.map((opponentId, i) => {
+      const isPast = pastOpponentIds.has(opponentId)
+      const boutOrder = targetPool.bouts.length + i + 1
+      if (isPast) {
+        // Latecomer was absent: opponent V + maxScore, latecomer A + 0
+        return {
+          id: nanoid(),
+          fencerAId: opponentId,
+          fencerBId: participantId,
+          scoreA: maxScore,
+          scoreB: 0,
+          resultA: 'V' as MatchResult,
+          resultB: 'A' as MatchResult,
+          order: boutOrder,
+        }
+      }
+      return {
+        id: nanoid(),
+        fencerAId: opponentId,
+        fencerBId: participantId,
+        order: boutOrder,
+      }
+    })
+
+    const updatedPools = phase.pools.map(pool =>
+      pool.id === targetPool.id
+        ? { ...pool, fencerIds: newFencerIds, bouts: [...pool.bouts, ...newBouts] }
+        : pool
+    )
+
+    const updated = mutateContest(t, contestId, c => ({
+      ...c,
+      stages: c.stages.map(s => s.id === stageId && s.type === 'pool'
+        ? { ...s, pools: updatedPools } as PoolPhase
+        : s),
+    }))
+    await saveTournament(updated)
+    set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
+  },
+
   setPoolBoutScore: async (tournamentId, contestId, stageId, poolId, boutId, scoreA, scoreB) => {
     const { tournaments } = get()
     const t = getTournamentOrThrow(tournaments, tournamentId)
@@ -482,12 +612,13 @@ export const useStore = create<AppState>((set, get) => ({
 
   // ── Tableau phase ──────────────────────────────────────────────────────────
 
-  addTableauPhase: async (tournamentId, contestId, name, size, maxScore, hasThirdPlace) => {
+  addTableauPhase: async (tournamentId, contestId, name, size, maxScore, fencedPlaces) => {
     const { tournaments } = get()
     const t = getTournamentOrThrow(tournaments, tournamentId)
     const contest = getContestOrThrow(t, contestId)
     // Seed from last pool phase results, or initial ranking
     const seededFencers = getSeedOrder(contest)
+    const hasThirdPlace = fencedPlaces !== 'none'
     const bouts = buildBracket(size, seededFencers, hasThirdPlace)
     const phase: TableauPhase = {
       id: nanoid(),
@@ -496,6 +627,7 @@ export const useStore = create<AppState>((set, get) => ({
       status: 'running',
       size,
       maxScore,
+      fencedPlaces,
       hasThirdPlace,
       bouts,
       lockedRounds: [],

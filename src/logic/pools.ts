@@ -17,6 +17,40 @@ const FIE_ORDER: Record<number, [number, number][]> = {
 }
 
 /**
+ * Calcule le nombre de poules optimal pour obtenir des poules d'une taille cible.
+ *
+ * La taille demandée est la taille minimale souhaitée. Le résultat peut produire
+ * des poules de taille `minPoolSize` ou `minPoolSize + 1` selon le nombre de participants.
+ *
+ * Exemples :
+ *   poolCountFromSize(22, 6) → 3  (poules de 7, 7, 8 ou 7, 7, 8 selon algo)
+ *   poolCountFromSize(21, 7) → 3  (3 poules de 7)
+ *   poolCountFromSize(22, 7) → 3  (2 poules de 7 + 1 de 8)
+ */
+export function poolCountFromSize(participantCount: number, minPoolSize: number): number {
+  if (participantCount <= 0 || minPoolSize <= 0) return 1
+  // Number of pools = ceil(n / (minPoolSize + 1)) ensures all pools ≤ minPoolSize + 1
+  // and ≥ minPoolSize (as long as n ≥ minPoolSize).
+  // We want floor(n / minPoolSize) pools max, ceil to avoid pools > minPoolSize+1.
+  const count = Math.ceil(participantCount / (minPoolSize + 1))
+  return Math.max(1, count)
+}
+
+/**
+ * Retourne une description lisible de la taille des poules pour un effectif donné.
+ * Ex: "3 poules de 7 ou 8 tireurs"
+ */
+export function poolSizeDescription(participantCount: number, poolCount: number): string {
+  if (poolCount <= 0) return ''
+  const base = Math.floor(participantCount / poolCount)
+  const extra = participantCount % poolCount
+  if (extra === 0) {
+    return `${poolCount} poule${poolCount > 1 ? 's' : ''} de ${base} ${base > 1 ? 'tireurs' : 'tireur'}`
+  }
+  return `${poolCount} poule${poolCount > 1 ? 's' : ''} de ${base} ou ${base + 1} tireurs`
+}
+
+/**
  * Distribute participants (fencers or teams) into pools.
  * seedOrder: optional array of participant IDs in rank order (e.g. from a previous pool round).
  * seedingBalanced:

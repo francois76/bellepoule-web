@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useStore } from '../store'
 import { importFFF, importBellePouleXML, readFileText } from '../logic/importExport'
 import type { Fencer, Team } from '../types'
+import { DEFAULT_DISPLAY_CONFIG } from '../types'
 
 const DEV_LAST_NAMES = ['Martin','Bernard','Dubois','Thomas','Robert','Richard','Petit','Durand','Leroy','Moreau','Simon','Laurent','Lefebvre','Michel','Garcia','David','Bertrand','Roux','Vincent','Fournier','Morel','Girard','Andre','Lefevre','Mercier','Dupont','Lambert','Bonnet','François','Martinez']
 const DEV_FIRST_NAMES = ['Hugo','Lucas','Léo','Louis','Gabriel','Noah','Raphaël','Arthur','Ethan','Alexandre','Léa','Emma','Chloé','Manon','Inès','Alice','Camille','Julie','Lucie','Anaïs']
@@ -42,6 +43,9 @@ export default function CheckinPage() {
   const [teamSort, setTeamSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'name', dir: 'asc' })
 
   if (!tournament || !contest) return <div className="text-red-500">Compétition introuvable</div>
+
+  const displayConfig = contest.displayConfig ?? DEFAULT_DISPLAY_CONFIG
+  const minTeamSize = contest.minTeamSize ?? 3
 
   const filtered = contest.fencers.filter(f =>
     `${f.lastName} ${f.firstName} ${f.club ?? ''}`.toLowerCase().includes(filter.toLowerCase())
@@ -328,7 +332,10 @@ export default function CheckinPage() {
             <tr>
               <th>#</th><th>Nom</th><th>Prénom</th>
               {contest.isTeamEvent && <th>Équipe</th>}
-              <th>Club</th><th>Né(e)</th><th>Rang</th><th>Présent</th>
+              {displayConfig.club.onCheckin && <th>Club</th>}
+              {displayConfig.dateOfBirth.onCheckin && <th>Né(e)</th>}
+              {displayConfig.initialRank.onCheckin && <th>Rang</th>}
+              <th>Présent</th>
             </tr>
           </thead>
           <tbody>
@@ -340,9 +347,9 @@ export default function CheckinPage() {
                   <td>{f.lastName.toUpperCase()}</td>
                   <td>{f.firstName}</td>
                   {contest.isTeamEvent && <td>{team?.name ?? '—'}</td>}
-                  <td>{f.club ?? '—'}</td>
-                  <td>{f.birthYear ?? '—'}</td>
-                  <td>{f.initialRank ?? '—'}</td>
+                  {displayConfig.club.onCheckin && <td>{f.club ?? '—'}</td>}
+                  {displayConfig.dateOfBirth.onCheckin && <td>{f.birthYear ?? '—'}</td>}
+                  {displayConfig.initialRank.onCheckin && <td>{f.initialRank ?? '—'}</td>}
                   <td>{f.present ? '✓' : ''}</td>
                 </tr>
               )
@@ -484,10 +491,15 @@ export default function CheckinPage() {
                           <td className="px-4 py-2 font-medium text-gray-800">{team.name}</td>
                           <td className="px-4 py-2 text-gray-500 hidden sm:table-cell">{team.club ?? '—'}</td>
                           <td className="px-4 py-2 text-gray-600">
-                            <span className={presentMembers < 3 ? 'text-orange-600 font-medium' : 'text-green-700'}>
+                            <span className={presentMembers < minTeamSize ? 'text-orange-600 font-medium' : 'text-green-700'}>
                               {presentMembers}
                             </span>
                             <span className="text-gray-400"> / {memberFencers.length}</span>
+                            {presentMembers < minTeamSize && (
+                              <span className="ml-1 text-orange-600 text-xs" title={`Minimum requis : ${minTeamSize} membre(s) présent(s)`}>
+                                ⚠️ min {minTeamSize}
+                              </span>
+                            )}
                           </td>
                           {contest.teams.some(t => t.initialRank !== undefined) && (
                             <td className="px-4 py-2 text-gray-500 hidden md:table-cell">{team.initialRank ?? '—'}</td>
@@ -594,9 +606,9 @@ export default function CheckinPage() {
                     <th className="px-4 py-2 text-left font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('lastName')}>Nom{sortArrow('lastName', fencerSort)}</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('firstName')}>Prénom{sortArrow('firstName', fencerSort)}</th>
                     {contest.isTeamEvent && <th className="px-4 py-2 text-left font-medium text-gray-600 hidden sm:table-cell">Équipe</th>}
-                    <th className="px-4 py-2 text-left font-medium text-gray-600 hidden sm:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('club')}>Club{sortArrow('club', fencerSort)}</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600 hidden md:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('birthYear')}>Né{sortArrow('birthYear', fencerSort)}</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600 hidden md:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('initialRank')}>Rang{sortArrow('initialRank', fencerSort)}</th>
+                    {displayConfig.club.visible && <th className="px-4 py-2 text-left font-medium text-gray-600 hidden sm:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('club')}>Club{sortArrow('club', fencerSort)}</th>}
+                    {displayConfig.dateOfBirth.visible && <th className="px-4 py-2 text-left font-medium text-gray-600 hidden md:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('birthYear')}>Né{sortArrow('birthYear', fencerSort)}</th>}
+                    {displayConfig.initialRank.visible && <th className="px-4 py-2 text-left font-medium text-gray-600 hidden md:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('initialRank')}>Rang{sortArrow('initialRank', fencerSort)}</th>}
                     <th className="px-4 py-2"></th>
                   </tr>
                 </thead>
@@ -657,9 +669,9 @@ export default function CheckinPage() {
                         <td className="px-4 py-2 font-medium text-gray-800">{f.lastName.toUpperCase()}</td>
                         <td className="px-4 py-2 text-gray-700">{f.firstName}</td>
                         {contest.isTeamEvent && <td className="px-4 py-2 text-gray-500 hidden sm:table-cell text-xs">{team?.name ?? '—'}</td>}
-                        <td className="px-4 py-2 text-gray-500 hidden sm:table-cell">{f.club ?? '—'}</td>
-                        <td className="px-4 py-2 text-gray-500 hidden md:table-cell">{f.birthYear ?? '—'}</td>
-                        <td className="px-4 py-2 text-gray-500 hidden md:table-cell">{f.initialRank ?? '—'}</td>
+                        {displayConfig.club.visible && <td className="px-4 py-2 text-gray-500 hidden sm:table-cell">{f.club ?? '—'}</td>}
+                        {displayConfig.dateOfBirth.visible && <td className="px-4 py-2 text-gray-500 hidden md:table-cell">{f.birthYear ?? '—'}</td>}
+                        {displayConfig.initialRank.visible && <td className="px-4 py-2 text-gray-500 hidden md:table-cell">{f.initialRank ?? '—'}</td>}
                         <td className="px-4 py-2 flex gap-2 justify-end">
                           <button className="text-gray-400 hover:text-blue-600 transition-colors text-xs"
                             onClick={() => startEditFencer(f)}>✎</button>

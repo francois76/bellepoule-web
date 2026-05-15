@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useStore } from '../store'
-import type { PoolPhase, PoolBout, Pool, Referee } from '../types'
+import type { PoolPhase, PoolBout, Pool, Referee, FencerPoolStatus } from '../types'
+import { poolCountFromSize, poolSizeDescription } from '../logic/pools'
 
 export default function PoolsPage() {
   const { tournamentId, contestId, stageId } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
-  const { tournaments, allocatePoolPhase, setPoolBoutScore, setPoolBoutAbsent, lockPoolPhase, unlockPoolPhase, fillRandomPoolBouts } = useStore()
+  const { tournaments, allocatePoolPhase, setPoolBoutScore, setPoolBoutAbsent, lockPoolPhase, unlockPoolPhase, fillRandomPoolBouts, setPoolFencerStatus, addLatecomer } = useStore()
   const tournament = tournaments.find(t => t.id === tournamentId)
   const contest = tournament?.contests.find(c => c.id === contestId)
   const stage = contest?.stages.find(s => s.id === stageId) as PoolPhase | undefined
@@ -18,6 +19,11 @@ export default function PoolsPage() {
   const [poolCountInput, setPoolCountInput] = useState('')
   const [seedingBalanced, setSeedingBalanced] = useState(true)
   const [showSheets, setShowSheets] = useState(false)
+  const [allocBySize, setAllocBySize] = useState(false)
+  const [poolSizeInput, setPoolSizeInput] = useState('6')
+  const [latecomerModal, setLatecomerModal] = useState(false)
+  const [latecomerFencerId, setLatecomerFencerId] = useState('')
+  const [statusMenuId, setStatusMenuId] = useState<string | null>(null)
 
   if (!tournament || !contest || !stage || stage.type !== 'pool') return <div className="text-red-500">Phase introuvable</div>
 
@@ -34,6 +40,13 @@ export default function PoolsPage() {
     ? contest.teams.filter(t => t.present).length
     : contest.fencers.filter(f => f.present).length
 
+  // Fencers already allocated in any pool of this stage
+  const allocatedIds = new Set(stage.pools.flatMap(p => p.fencerIds))
+  // Eligible latecomers: present but not yet in any pool
+  const eligibleLatecomers = contest.isTeamEvent
+    ? contest.teams.filter(t => t.present && !allocatedIds.has(t.id))
+    : contest.fencers.filter(f => f.present && !allocatedIds.has(f.id))
+
   function openAllocateModal() {
     setPoolCountInput(String(Math.ceil(presentCount / 6)))
     // Default to balanced for first round, non-balanced (par force) if a previous pool round exists
@@ -41,6 +54,13 @@ export default function PoolsPage() {
     const hasPrevPool = contest!.stages.slice(0, stageIdx).some(s => s.type === 'pool' && s.status === 'done')
     setSeedingBalanced(!hasPrevPool)
     setAllocateModal(true)
+  }
+
+  async function handleAddLatecomer() {
+    if (!latecomerFencerId) return
+    await addLatecomer(tournamentId!, contestId!, stageId!, latecomerFencerId)
+    setLatecomerModal(false)
+    setLatecomerFencerId('')
   }
 
   async function handleAllocate(e: React.FormEvent) {
@@ -119,6 +139,12 @@ export default function PoolsPage() {
               ✅ Terminer le tour
             </button>
           )}
+          {stage.status === 'running' && eligibleLatecomers.length > 0 && (
+            <button className="btn-secondary" onClick={() => { setLatecomerFencerId(''); setLatecomerModal(true) }}
+              title="Ajouter un tireur arrivé en retard dans la plus petite poule">
+              🕐 Retardataire
+            </button>
+          )}
           {stage.pools.length > 0 && stage.status === 'running' && import.meta.env.DEV && (
             <button className="btn-secondary border-orange-300 text-orange-700 hover:bg-orange-50"
               onClick={() => fillRandomPoolBouts(tournamentId!, contestId!, stageId!)}>
@@ -144,6 +170,34 @@ export default function PoolsPage() {
         </div>
       </div>
 
+      {/* Modal — Retardataire */}
+      {latecomerModal && (
+        <div className="print:hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h2 className="text-lg font-bold text-gray-800">🕐 Ajouter un retardataire</h2>
+            <p className="text-sm text-gray-500">
+              Le retardataire sera ajouté à la <strong>plus petite poule</strong>.
+              Les assauts déjà joués sans lui seront marqués comme <em>absences</em> (ses adversaires passés reçoivent victoire + score max).
+            </p>
+            <div>
+              <label className="label">Tireur retardataire</label>
+              <select className="input" value={latecomerFencerId} onChange={e => setLatecomerFencerId(e.target.value)}>
+                <option value="">— Sélectionner —</option>
+                {eligibleLatecomers.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {'lastName' in p ? `${p.lastName.toUpperCase()} ${p.firstName}` : p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button type="button" className="btn-secondary flex-1" onClick={() => setLatecomerModal(false)}>Annuler</button>
+              <button type="button" className="btn-primary flex-1" disabled={!latecomerFencerId} onClick={handleAddLatecomer}>Ajouter</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal — Allocation des poules */}
       {allocateModal && (
         <div className="print:hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
@@ -151,18 +205,45 @@ export default function PoolsPage() {
             <h2 className="text-lg font-bold text-gray-800">Allouer les poules</h2>
             <p className="text-sm text-gray-500">{presentCount} {participantLabel} présent{contest.isTeamEvent ? 'es' : 's'}</p>
             <form onSubmit={handleAllocate} className="space-y-3">
-              <div>
-                <label className="label">Nombre de poules</label>
-                <input className="input" type="number" min={1} max={presentCount}
-                  value={poolCountInput}
-                  onChange={e => setPoolCountInput(e.target.value)}
-                  required autoFocus />
-                {poolCountInput && parseInt(poolCountInput) > 0 && (
-                  <p className="text-xs text-gray-400 mt-1">
-                    ~{Math.ceil(presentCount / parseInt(poolCountInput))} {participantLabel} par poule
-                  </p>
-                )}
+              {/* Toggle: par nombre / par taille */}
+              <div className="flex rounded-lg overflow-hidden border border-gray-200 text-sm">
+                <button type="button"
+                  className={`flex-1 py-1.5 font-medium transition-colors ${!allocBySize ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                  onClick={() => setAllocBySize(false)}>Par nombre</button>
+                <button type="button"
+                  className={`flex-1 py-1.5 font-medium transition-colors ${allocBySize ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                  onClick={() => setAllocBySize(true)}>Par taille</button>
               </div>
+              {allocBySize ? (
+                <div>
+                  <label className="label">Taille cible par poule</label>
+                  <select className="input" value={poolSizeInput} onChange={e => {
+                    setPoolSizeInput(e.target.value)
+                    const cnt = poolCountFromSize(presentCount, parseInt(e.target.value))
+                    setPoolCountInput(String(cnt))
+                  }}>
+                    {[5,6,7,8].map(n => <option key={n} value={n}>{n} tireurs</option>)}
+                  </select>
+                  {poolCountInput && (
+                    <p className="text-xs text-blue-600 mt-1 font-medium">
+                      → {poolSizeDescription(presentCount, parseInt(poolCountInput))}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <label className="label">Nombre de poules</label>
+                  <input className="input" type="number" min={1} max={presentCount}
+                    value={poolCountInput}
+                    onChange={e => setPoolCountInput(e.target.value)}
+                    required autoFocus />
+                  {poolCountInput && parseInt(poolCountInput) > 0 && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      {poolSizeDescription(presentCount, parseInt(poolCountInput))}
+                    </p>
+                  )}
+                </div>
+              )}
               <div>
                 <label className="label">Répartition</label>
                 <div className="flex gap-3 mt-1">
@@ -255,13 +336,43 @@ export default function PoolsPage() {
               <div className="card">
                 <h2 className="font-semibold text-gray-700 mb-3">Poule {pool.number} — {contest.isTeamEvent ? 'Équipes' : 'Tireurs'}</h2>
                 <ol className="space-y-1">
-                  {pool.fencerIds.map((fId, idx) => (
-                    <li key={fId} className="flex items-center gap-2 text-sm">
-                      <span className="w-5 h-5 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-bold">{idx + 1}</span>
-                      <span className="text-gray-800">{participantName(fId)}</span>
-                      {participantMap[fId]?.club && <span className="text-gray-400 text-xs">({participantMap[fId].club})</span>}
-                    </li>
-                  ))}
+                  {pool.fencerIds.map((fId, idx) => {
+                    const fencerStatus: FencerPoolStatus = (stage.fencerStatuses?.[fId] ?? 'ok') as FencerPoolStatus
+                    const statusIcon = fencerStatus === 'ok' ? '✓' : fencerStatus === 'withdrawal' ? '🚑' : '⛔'
+                    const statusColor = fencerStatus === 'ok' ? 'text-green-600' : fencerStatus === 'withdrawal' ? 'text-orange-600' : 'text-red-600'
+                    const statusLabel = fencerStatus === 'ok' ? 'Présent(e)' : fencerStatus === 'withdrawal' ? 'Forfait' : 'Exclu(e)'
+                    return (
+                      <li key={fId} className="flex items-center gap-2 text-sm">
+                        <span className="w-5 h-5 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-bold">{idx + 1}</span>
+                        <span className={`text-gray-800 ${fencerStatus !== 'ok' ? 'line-through text-gray-400' : ''}`}>{participantName(fId)}</span>
+                        {participantMap[fId]?.club && <span className="text-gray-400 text-xs">({participantMap[fId].club})</span>}
+                        {/* Status badge + dropdown */}
+                        {stage.status !== 'done' && (
+                          <div className="relative ml-auto">
+                            <button
+                              className={`text-xs font-medium ${statusColor} border border-current rounded px-1.5 py-0.5 hover:opacity-80`}
+                              title={statusLabel}
+                              onClick={() => setStatusMenuId(statusMenuId === fId ? null : fId)}
+                            >{statusIcon} {statusLabel}</button>
+                            {statusMenuId === fId && (
+                              <div className="absolute right-0 top-7 z-20 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-max">
+                                {([['ok','✓ Présent(e)','text-green-700'],['withdrawal','🚑 Forfait','text-orange-700'],['excluded','⛔ Exclu(e)','text-red-700']] as [FencerPoolStatus, string, string][]).map(([s,label,cls]) => (
+                                  <button key={s} className={`block w-full text-left px-3 py-1.5 text-sm ${cls} hover:bg-gray-50`}
+                                    onClick={() => { setPoolFencerStatus(tournamentId!, contestId!, stageId!, fId, s, contest?.autoScoreStuffing ?? true); setStatusMenuId(null) }}>
+                                    {label}
+                                  </button>
+                                ))}
+                                <div className="px-3 pt-1 pb-1 border-t border-gray-100 text-xs text-gray-400">Le remplissage auto des assauts dépend du paramètre « remplissage auto » de la compétition</div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {stage.status === 'done' && fencerStatus !== 'ok' && (
+                          <span className={`ml-auto text-xs font-medium ${statusColor}`}>{statusIcon}</span>
+                        )}
+                      </li>
+                    )
+                  })}
                 </ol>
               </div>
 

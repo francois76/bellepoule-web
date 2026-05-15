@@ -138,7 +138,8 @@ export default function TableauPage() {
           <div className="flex gap-3 mt-1 text-xs text-gray-500">
             <span>Score max : <strong className="text-gray-700">{stage.maxScore}</strong></span>
             <span>Tableau de <strong className="text-gray-700">{stage.size}</strong></span>
-            {stage.hasThirdPlace && <span className="text-gray-700">· 3e place</span>}
+            {(stage.fencedPlaces === 'third_place' || stage.hasThirdPlace) && <span className="text-gray-700">· 3e place</span>}
+            {stage.fencedPlaces === 'all_places' && <span className="text-orange-700">· Toutes les places</span>}
           </div>
         </div>
         <div className="print:hidden flex gap-2 flex-wrap">
@@ -175,7 +176,7 @@ export default function TableauPage() {
         {rounds.map(round => {
           // 3rd place bout lives at round=4 boutIndex=2 but is displayed in the "Finales" section
           const isFinalesSection = round === 2
-          const thirdPlaceBout = isFinalesSection && stage.hasThirdPlace
+          const thirdPlaceBout = isFinalesSection && (stage.fencedPlaces === 'third_place' || (stage.fencedPlaces === undefined && stage.hasThirdPlace))
             ? stage.bouts.find(b => b.round === 4 && b.boutIndex === 2)
             : undefined
 
@@ -185,7 +186,7 @@ export default function TableauPage() {
             .sort((a, b) => a.boutIndex - b.boutIndex)
 
           const label = round === 2
-            ? (stage.hasThirdPlace ? 'Finales' : 'Finale')
+            ? ((stage.fencedPlaces === 'third_place' || stage.fencedPlaces === 'all_places' || (stage.fencedPlaces === undefined && stage.hasThirdPlace)) ? 'Finales' : 'Finale')
             : round === 4 ? 'Demi-finales'
             : round === 8 ? 'Quarts de finale'
             : `Tableau de ${round}`
@@ -403,6 +404,12 @@ function MatchSheetsPrint({ stage, fencerName, roundFilter }: PrintProps & { rou
                             <div key={j} className="ms-touch">{j + 1}</div>
                           ))}
                         </div>
+                      </div>
+                      {/* Signature line */}
+                      <div style={{ marginTop: 6, fontSize: '7pt', color: '#555', display: 'flex', gap: 16 }}>
+                        <span>Signature Arbitre&nbsp;: ___________________________</span>
+                        <span>Signature Tireur&nbsp;A&nbsp;: ___________________________</span>
+                        <span>Signature Tireur&nbsp;B&nbsp;: ___________________________</span>
                       </div>
                     </div>
                   )
