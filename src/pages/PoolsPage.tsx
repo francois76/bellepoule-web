@@ -836,8 +836,8 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
         </div>
       ) : (
         <div className="flex items-center gap-1">
-          {/* Trigger bulle : A gagne — masqué si absent */}
-          {!disabled && !isAbsent && (
+          {/* Trigger bulle : A gagne */}
+          {!disabled && (
             <button
               className="text-xs px-1.5 py-0.5 rounded border font-medium bg-green-50 text-green-700 border-green-200 hover:bg-green-100 shrink-0"
               onClick={e => openPopup('A', e.currentTarget)}
@@ -850,8 +850,8 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
             {scored ? `${bout.scoreA} — ${bout.scoreB}` : '— —'}
           </span>
           <span className={`text-sm flex-1 truncate min-w-0 ${bout.resultB === 'V' ? 'font-bold text-green-700' : bout.resultB === 'A' ? 'text-red-500 italic' : 'text-gray-700'}`}>{nameB}{bout.resultB === 'A' ? ' (ABS)' : ''}</span>
-          {/* Trigger bulle : B gagne — masqué si absent */}
-          {!disabled && !isAbsent && (
+          {/* Trigger bulle : B gagne */}
+          {!disabled && (
             <button
               className="text-xs px-1.5 py-0.5 rounded border font-medium bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 shrink-0"
               onClick={e => openPopup('B', e.currentTarget)}
@@ -859,7 +859,7 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
               ▾ V
             </button>
           )}
-          {!disabled && !isAbsent && <span className="text-gray-300 text-xs cursor-pointer shrink-0 ml-1" onClick={onEdit}>✏️</span>}
+          {!disabled && <span className="text-gray-300 text-xs cursor-pointer shrink-0 ml-1" onClick={onEdit}>✏️</span>}
         </div>
       )}
     </div>

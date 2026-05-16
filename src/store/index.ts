@@ -573,8 +573,10 @@ export const useStore = create<AppState>((set, get) => ({
               bouts: p.bouts.map(b => {
                 if (b.id !== boutId) return b
                 if (absentSide === 'A') {
+                  if (b.resultA === 'A') return { ...b, scoreA: undefined, scoreB: undefined, resultA: undefined, resultB: undefined }
                   return { ...b, scoreA: 0, scoreB: maxScore, resultA: 'A' as MatchResult, resultB: 'V' as MatchResult }
                 } else {
+                  if (b.resultB === 'A') return { ...b, scoreA: undefined, scoreB: undefined, resultA: undefined, resultB: undefined }
                   return { ...b, scoreA: maxScore, scoreB: 0, resultA: 'V' as MatchResult, resultB: 'A' as MatchResult }
                 }
               }),
