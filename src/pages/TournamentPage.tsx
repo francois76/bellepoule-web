@@ -18,6 +18,15 @@ const GENDERS = [
 
 const weaponEmoji: Record<string, string> = { epee: '⚔️', foil: '🤺', sabre: '🗡️' }
 
+const DISPLAY_FIELD_LABELS: Record<string, string> = {
+  dateOfBirth:  'Date de naissance',
+  gender:       'Genre',
+  club:         'Club',
+  country:      'Pays',
+  licence:      'N° licence',
+  initialRank:  'Classement initial',
+}
+
 export default function TournamentPage() {
   const { tournamentId } = useParams<{ tournamentId: string }>()
   const { tournaments, addContest, removeContest, addFencer, addReferee, addTeam, addPoolPhase } = useStore()
@@ -34,6 +43,7 @@ export default function TournamentPage() {
     date: '',
     isTeamEvent: false,
     minTeamSize: '3',
+    displayConfig: DEFAULT_DISPLAY_CONFIG,
   })
 
   if (!tournament) return <div className="text-red-500">Tournoi introuvable</div>
@@ -106,7 +116,7 @@ export default function TournamentPage() {
       date: form.date || undefined,
       minTeamSize: form.isTeamEvent ? (parseInt(form.minTeamSize) || 3) : undefined,
       autoScoreStuffing: true,
-      displayConfig: DEFAULT_DISPLAY_CONFIG,
+      displayConfig: form.displayConfig,
     })
     setCreating(false)
     navigate(`/tournament/${tournamentId}/contest/${contest.id}`)
@@ -194,6 +204,25 @@ export default function TournamentPage() {
               </div>
             )}
           </div>
+
+          <div className="space-y-2 border-t pt-4">
+            <h3 className="font-semibold text-gray-700 text-sm">Champs à gérer (obligatoires si cochés)</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {(Object.keys(form.displayConfig) as (keyof typeof form.displayConfig)[]).map(field => (
+                <label key={field} className="flex items-center gap-2 p-2 rounded border hover:bg-gray-50 cursor-pointer">
+                  <input type="checkbox"
+                    checked={form.displayConfig[field].visible}
+                    onChange={e => set('displayConfig', {
+                      ...form.displayConfig,
+                      [field]: { ...form.displayConfig[field], visible: e.target.checked, onCheckin: e.target.checked, onPool: e.target.checked }
+                    })}
+                    className="w-4 h-4" />
+                  <span className="text-sm text-gray-700">{DISPLAY_FIELD_LABELS[field]}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
           <div className="flex gap-2 justify-end">
             <button type="button" className="btn-secondary" onClick={() => setCreating(false)}>Annuler</button>
             <button type="submit" className="btn-primary">Créer</button>

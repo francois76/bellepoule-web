@@ -102,12 +102,13 @@ export function importFFF(text: string): Fencer[] {
     const [lastName, firstName, birthDate, gender, country] = personal
     const clubFields = parts[2]?.split(',') ?? []
     const [licenceNumber, , club, rankStr] = clubFields
-    const byStr = birthDate?.trim().split('/')?.[2]
+    const bdp = birthDate?.trim().split('/') ?? []
+    const isoBirthDate = bdp.length === 3 ? `${bdp[2]}-${bdp[1].padStart(2, '0')}-${bdp[0].padStart(2, '0')}` : undefined
     fencers.push({
       id: nanoid(),
       lastName: lastName?.trim() ?? '',
       firstName: firstName?.trim() ?? '',
-      birthYear: byStr && byStr.length === 4 ? parseInt(byStr) || undefined : undefined,
+      birthDate: isoBirthDate,
       gender: (gender?.trim() === 'F' || gender?.trim() === 'D') ? 'F' : 'M',
       club: club?.trim() || undefined,
       country: country?.trim() || undefined,
@@ -149,13 +150,13 @@ export function importBellePouleXML(xmlText: string): Partial<Contest> & { fence
     const statut = t.getAttribute('Statut')
     const dob = t.getAttribute('DateNaissance') ?? ''
     const dobParts = dob.includes('.') ? dob.split('.') : dob.includes('/') ? dob.split('/') : []
-    const birthYear = dobParts.length === 3 ? parseInt(dobParts[2]) || undefined : undefined
+    const isoBirthDate = dobParts.length === 3 ? `${dobParts[2]}-${dobParts[1].padStart(2, '0')}-${dobParts[0].padStart(2, '0')}` : undefined
     const fencerId = t.getAttribute('REF') ?? t.getAttribute('ID') ?? nanoid()
     fencers.push({
       id: fencerId,
       lastName: t.getAttribute('Nom') ?? '',
       firstName: t.getAttribute('Prenom') ?? '',
-      birthYear,
+      birthDate: isoBirthDate,
       gender: (t.getAttribute('Sexe') === 'F' ? 'F' : 'M') as 'M' | 'F',
       club: t.getAttribute('Club') ?? undefined,
       country: t.getAttribute('Nation') ?? undefined,

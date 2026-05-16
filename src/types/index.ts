@@ -86,7 +86,7 @@ export interface Fencer {
   id: string
   firstName: string
   lastName: string
-  birthYear?: number
+  birthDate?: string // ISO YYYY-MM-DD
   gender: 'M' | 'F'
   club?: string
   country?: string

@@ -9,7 +9,7 @@ const DEV_LAST_NAMES = ['Martin','Bernard','Dubois','Thomas','Robert','Richard',
 const DEV_FIRST_NAMES = ['Hugo','Lucas','Léo','Louis','Gabriel','Noah','Raphaël','Arthur','Ethan','Alexandre','Léa','Emma','Chloé','Manon','Inès','Alice','Camille','Julie','Lucie','Anaïs']
 const DEV_CLUBS = ['CSM Clamart','Châlons','Rodez','Paris UC','Grenoble Escrime','Bordeaux EC','Toulouse Escrime','Lyon AE','Nantes EC','Rennes EA']
 
-const EMPTY_FENCER_FORM = { lastName: '', firstName: '', gender: 'M' as 'M' | 'F', club: '', birthYear: '', initialRank: '' }
+const EMPTY_FENCER_FORM = { lastName: '', firstName: '', gender: 'M' as 'M' | 'F', club: '', birthDate: '', licenceNumber: '', initialRank: '' }
 const EMPTY_TEAM_FORM = { name: '', club: '', initialRank: '', fencerIds: [] as string[] }
 
 export default function CheckinPage() {
@@ -55,7 +55,7 @@ export default function CheckinPage() {
   const minTeamSize = contest.minTeamSize ?? 3
 
   const filtered = contest.fencers.filter(f =>
-    `${f.lastName} ${f.firstName} ${f.club ?? ''}`.toLowerCase().includes(filter.toLowerCase())
+    `${f.lastName} ${f.firstName} ${f.club ?? ''} ${f.licenceNumber ?? ''}`.toLowerCase().includes(filter.toLowerCase())
   )
   const presentCount = contest.fencers.filter(f => f.present).length
 
@@ -84,7 +84,8 @@ export default function CheckinPage() {
     if (key === 'lastName') return cmp(a.lastName.toUpperCase(), b.lastName.toUpperCase(), dir)
     if (key === 'firstName') return cmp(a.firstName, b.firstName, dir)
     if (key === 'club') return cmp(a.club ?? '', b.club ?? '', dir)
-    if (key === 'birthYear') return cmp(a.birthYear, b.birthYear, dir)
+    if (key === 'birthDate') return cmp(a.birthDate ?? '', b.birthDate ?? '', dir)
+    if (key === 'licenceNumber') return cmp(a.licenceNumber ?? '', b.licenceNumber ?? '', dir)
     if (key === 'initialRank') return cmp(a.initialRank, b.initialRank, dir)
     if (key === 'team') {
       const teamA = contest.teams.find(t => t.fencerIds.includes(a.id))?.name ?? ''
@@ -116,15 +117,26 @@ export default function CheckinPage() {
     return 0
   })
 
+  function validateFencer(f: typeof EMPTY_FENCER_FORM) {
+    if (!f.lastName.trim()) return "Le nom est obligatoire."
+    if (!f.firstName.trim()) return "Le prénom est obligatoire."
+    if (displayConfig.dateOfBirth.visible && !f.birthDate) return "La date de naissance est obligatoire."
+    if (displayConfig.licence.visible && !f.licenceNumber.trim()) return "Le numéro de licence est obligatoire."
+    if (displayConfig.club.visible && !f.club.trim()) return "Le club est obligatoire."
+    return null
+  }
+
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.lastName.trim()) return
+    const err = validateFencer(form)
+    if (err) return alert(err)
     await addFencer(tournamentId!, contestId!, {
       lastName: form.lastName.trim(),
       firstName: form.firstName.trim(),
       gender: form.gender,
       club: form.club.trim() || undefined,
-      birthYear: form.birthYear ? parseInt(form.birthYear) : undefined,
+      birthDate: form.birthDate || undefined,
+      licenceNumber: form.licenceNumber.trim() || undefined,
       initialRank: form.initialRank ? parseInt(form.initialRank) : undefined,
       present: true,
     })
@@ -141,21 +153,24 @@ export default function CheckinPage() {
       firstName: f.firstName,
       gender: f.gender,
       club: f.club ?? '',
-      birthYear: f.birthYear?.toString() ?? '',
+      birthDate: f.birthDate ?? '',
+      licenceNumber: f.licenceNumber ?? '',
       initialRank: f.initialRank?.toString() ?? '',
     })
   }
 
   async function handleSaveFencer(e: React.FormEvent, fencer: Fencer) {
     e.preventDefault()
-    if (!editFencerForm.lastName.trim()) return
+    const err = validateFencer(editFencerForm)
+    if (err) return alert(err)
     await updateFencer(tournamentId!, contestId!, {
       ...fencer,
       lastName: editFencerForm.lastName.trim(),
       firstName: editFencerForm.firstName.trim(),
       gender: editFencerForm.gender,
       club: editFencerForm.club.trim() || undefined,
-      birthYear: editFencerForm.birthYear ? parseInt(editFencerForm.birthYear) : undefined,
+      birthDate: editFencerForm.birthDate || undefined,
+      licenceNumber: editFencerForm.licenceNumber.trim() || undefined,
       initialRank: editFencerForm.initialRank ? parseInt(editFencerForm.initialRank) : undefined,
     })
     setEditingFencerId(null)
@@ -250,7 +265,8 @@ export default function CheckinPage() {
         firstName: DEV_FIRST_NAMES[(rank * 3) % DEV_FIRST_NAMES.length],
         gender: rank % 3 === 0 ? 'F' : 'M',
         club: DEV_CLUBS[rank % DEV_CLUBS.length],
-        birthYear: 1990 + (rank % 35),
+        birthDate: `${1990 + (rank % 35)}-01-01`,
+        licenceNumber: `LIC-${rank}`,
         initialRank: rank,
         present: true,
       }
@@ -311,7 +327,8 @@ export default function CheckinPage() {
               <th>#</th><th>Nom</th><th>Prénom</th>
               {contest.isTeamEvent && <th>Équipe</th>}
               {displayConfig.club.onCheckin && <th>Club</th>}
-              {displayConfig.dateOfBirth.onCheckin && <th>Né(e)</th>}
+              {displayConfig.licence.onCheckin && <th>Licence</th>}
+              {displayConfig.dateOfBirth.onCheckin && <th>Né(e) le</th>}
               {displayConfig.initialRank.onCheckin && <th>Rang</th>}
               <th>Présent</th>
             </tr>
@@ -326,7 +343,8 @@ export default function CheckinPage() {
                   <td>{f.firstName}</td>
                   {contest.isTeamEvent && <td>{team?.name ?? '—'}</td>}
                   {displayConfig.club.onCheckin && <td>{f.club ?? '—'}</td>}
-                  {displayConfig.dateOfBirth.onCheckin && <td>{f.birthYear ?? '—'}</td>}
+                  {displayConfig.licence.onCheckin && <td>{f.licenceNumber ?? '—'}</td>}
+                  {displayConfig.dateOfBirth.onCheckin && <td>{f.birthDate ? new Date(f.birthDate).toLocaleDateString('fr-FR') : '—'}</td>}
                   {displayConfig.initialRank.onCheckin && <td>{f.initialRank ?? '—'}</td>}
                   <td>{f.present ? '✓' : ''}</td>
                 </tr>
@@ -541,7 +559,7 @@ export default function CheckinPage() {
                 <input className="input" value={form.lastName} onChange={e => setForm(f => ({...f, lastName: e.target.value}))} autoFocus />
               </div>
               <div>
-                <label className="label">Prénom</label>
+                <label className="label">Prénom *</label>
                 <input className="input" value={form.firstName} onChange={e => setForm(f => ({...f, firstName: e.target.value}))} />
               </div>
               <div>
@@ -552,12 +570,16 @@ export default function CheckinPage() {
                 </select>
               </div>
               <div>
-                <label className="label">Club</label>
+                <label className="label">Club {displayConfig.club.visible && '*'}</label>
                 <input className="input" value={form.club} onChange={e => setForm(f => ({...f, club: e.target.value}))} />
               </div>
               <div>
-                <label className="label">Année naissance</label>
-                <input type="number" className="input" value={form.birthYear} onChange={e => setForm(f => ({...f, birthYear: e.target.value}))} placeholder="2000" />
+                <label className="label">N° Licence {displayConfig.licence.visible && '*'}</label>
+                <input className="input" value={form.licenceNumber} onChange={e => setForm(f => ({...f, licenceNumber: e.target.value}))} />
+              </div>
+              <div>
+                <label className="label">Date de naissance {displayConfig.dateOfBirth.visible && '*'}</label>
+                <input type="date" className="input" value={form.birthDate} onChange={e => setForm(f => ({...f, birthDate: e.target.value}))} />
               </div>
               <div>
                 <label className="label">Classement initial</label>
@@ -589,7 +611,8 @@ export default function CheckinPage() {
                     <th className="px-4 py-2 text-left font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('firstName')}>Prénom{sortArrow('firstName', fencerSort)}</th>
                     {contest.isTeamEvent && <th className="px-4 py-2 text-left font-medium text-gray-600 hidden sm:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('team')}>Équipe{sortArrow('team', fencerSort)}</th>}
                     {displayConfig.club.visible && <th className="px-4 py-2 text-left font-medium text-gray-600 hidden sm:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('club')}>Club{sortArrow('club', fencerSort)}</th>}
-                    {displayConfig.dateOfBirth.visible && <th className="px-4 py-2 text-left font-medium text-gray-600 hidden md:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('birthYear')}>Né{sortArrow('birthYear', fencerSort)}</th>}
+                    {displayConfig.licence.visible && <th className="px-4 py-2 text-left font-medium text-gray-600 hidden md:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('licenceNumber')}>Licence{sortArrow('licenceNumber', fencerSort)}</th>}
+                    {displayConfig.dateOfBirth.visible && <th className="px-4 py-2 text-left font-medium text-gray-600 hidden md:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('birthDate')}>Né{sortArrow('birthDate', fencerSort)}</th>}
                     {displayConfig.initialRank.visible && <th className="px-4 py-2 text-left font-medium text-gray-600 hidden md:table-cell cursor-pointer select-none hover:bg-gray-100" onClick={() => toggleFencerSort('initialRank')}>Rang{sortArrow('initialRank', fencerSort)}</th>}
                     <th className="px-4 py-2"></th>
                   </tr>
@@ -609,7 +632,7 @@ export default function CheckinPage() {
                                   <input className="input" value={editFencerForm.lastName} onChange={e => setEditFencerForm(v => ({...v, lastName: e.target.value}))} autoFocus />
                                 </div>
                                 <div>
-                                  <label className="label">Prénom</label>
+                                  <label className="label">Prénom *</label>
                                   <input className="input" value={editFencerForm.firstName} onChange={e => setEditFencerForm(v => ({...v, firstName: e.target.value}))} />
                                 </div>
                                 <div>
@@ -620,12 +643,16 @@ export default function CheckinPage() {
                                   </select>
                                 </div>
                                 <div>
-                                  <label className="label">Club</label>
+                                  <label className="label">Club {displayConfig.club.visible && '*'}</label>
                                   <input className="input" value={editFencerForm.club} onChange={e => setEditFencerForm(v => ({...v, club: e.target.value}))} />
                                 </div>
                                 <div>
-                                  <label className="label">Année naissance</label>
-                                  <input type="number" className="input" value={editFencerForm.birthYear} onChange={e => setEditFencerForm(v => ({...v, birthYear: e.target.value}))} />
+                                  <label className="label">N° Licence {displayConfig.licence.visible && '*'}</label>
+                                  <input className="input" value={editFencerForm.licenceNumber} onChange={e => setEditFencerForm(v => ({...v, licenceNumber: e.target.value}))} />
+                                </div>
+                                <div>
+                                  <label className="label">Date de naissance {displayConfig.dateOfBirth.visible && '*'}</label>
+                                  <input type="date" className="input" value={editFencerForm.birthDate} onChange={e => setEditFencerForm(v => ({...v, birthDate: e.target.value}))} />
                                 </div>
                                 <div>
                                   <label className="label">Classement initial</label>
@@ -652,7 +679,8 @@ export default function CheckinPage() {
                         <td className="px-4 py-2 text-gray-700">{f.firstName}</td>
                         {contest.isTeamEvent && <td className="px-4 py-2 text-gray-500 hidden sm:table-cell text-xs">{team?.name ?? '—'}</td>}
                         {displayConfig.club.visible && <td className="px-4 py-2 text-gray-500 hidden sm:table-cell">{f.club ?? '—'}</td>}
-                        {displayConfig.dateOfBirth.visible && <td className="px-4 py-2 text-gray-500 hidden md:table-cell">{f.birthYear ?? '—'}</td>}
+                        {displayConfig.licence.visible && <td className="px-4 py-2 text-gray-500 hidden md:table-cell">{f.licenceNumber ?? '—'}</td>}
+                        {displayConfig.dateOfBirth.visible && <td className="px-4 py-2 text-gray-500 hidden md:table-cell">{f.birthDate ? new Date(f.birthDate).toLocaleDateString('fr-FR') : '—'}</td>}
                         {displayConfig.initialRank.visible && <td className="px-4 py-2 text-gray-500 hidden md:table-cell">{f.initialRank ?? '—'}</td>}
                         <td className="px-4 py-2 flex gap-2 justify-end">
                           <button className="text-gray-400 hover:text-blue-600 transition-colors text-xs"

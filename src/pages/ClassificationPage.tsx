@@ -13,11 +13,20 @@ export default function ClassificationPage() {
 
   if (!tournament || !contest) return <div className="text-red-500">Compétition introuvable</div>
 
+  const displayConfig = contest.displayConfig ?? {
+    dateOfBirth:  { visible: true,  onCheckin: true,  onPool: true,  onResults: false },
+    gender:       { visible: true,  onCheckin: true,  onPool: false, onResults: false },
+    club:         { visible: true,  onCheckin: true,  onPool: true,  onResults: true  },
+    country:      { visible: true,  onCheckin: true,  onPool: true,  onResults: true  },
+    licence:      { visible: false, onCheckin: true,  onPool: false, onResults: false },
+    initialRank:  { visible: true,  onCheckin: true,  onPool: true,  onResults: true  },
+  }
+
   // Unified participant map: team IDs → name/club for team events, fencer IDs for individual events
-  type ParticipantInfo = { name: string; firstName?: string; club?: string; country?: string }
+  type ParticipantInfo = { name: string; firstName?: string; club?: string; country?: string; birthDate?: string; licenceNumber?: string }
   const participantMap: Record<string, ParticipantInfo> = contest.isTeamEvent
     ? Object.fromEntries(contest.teams.map(t => [t.id, { name: t.name, club: t.club }]))
-    : Object.fromEntries(contest.fencers.map(f => [f.id, { name: f.lastName.toUpperCase(), firstName: f.firstName, club: f.club, country: f.country }]))
+    : Object.fromEntries(contest.fencers.map(f => [f.id, { name: f.lastName.toUpperCase(), firstName: f.firstName, club: f.club, country: f.country, birthDate: f.birthDate, licenceNumber: f.licenceNumber }]))
 
   // Build classification: prefer tableau results, then pool results
   const lastTableau = [...contest.stages].reverse().find(s => s.type === 'tableau') as TableauPhase | undefined
@@ -160,13 +169,16 @@ export default function ClassificationPage() {
               <th className="px-4 py-3 text-left w-16">Rang</th>
               <th className="px-4 py-3 text-left" colSpan={contest.isTeamEvent ? 2 : 1}>Nom</th>
               {!contest.isTeamEvent && <th className="px-4 py-3 text-left">Prénom</th>}
-              <th className="px-4 py-3 text-left hidden sm:table-cell print:table-cell">Club</th>
-              <th className="px-4 py-3 text-left hidden md:table-cell print:table-cell">Nation</th>
+              {!contest.isTeamEvent && displayConfig.licence.onResults && <th className="px-4 py-3 text-left hidden md:table-cell print:table-cell">Licence</th>}
+              {!contest.isTeamEvent && displayConfig.dateOfBirth.onResults && <th className="px-4 py-3 text-left hidden md:table-cell print:table-cell">Né(e)</th>}
+              {displayConfig.club.onResults && <th className="px-4 py-3 text-left hidden sm:table-cell print:table-cell">Club</th>}
+              {displayConfig.country.onResults && <th className="px-4 py-3 text-left hidden md:table-cell print:table-cell">Nation</th>}
             </tr>
           </thead>
           <tbody>
             {entries.map(entry => {
               const p = participantMap[entry.fencerId]
+              const birthYear = p?.birthDate ? p.birthDate.split('-')[0] : '—'
               return (
                 <tr key={entry.fencerId} className={`border-b border-gray-100 ${entry.rank <= 3 ? 'bg-yellow-50' : entry.rank % 2 === 0 ? 'bg-gray-50' : ''}`}>
                   <td className="px-4 py-2">
@@ -177,9 +189,10 @@ export default function ClassificationPage() {
                   </td>
                   <td className="px-4 py-2 font-medium text-gray-800" colSpan={contest.isTeamEvent ? 2 : 1}>{p?.name ?? '?'}</td>
                   {!contest.isTeamEvent && <td className="px-4 py-2 text-gray-600">{p?.firstName ?? '—'}</td>}
-                  {contest.isTeamEvent && <td className="px-4 py-2 text-gray-500 hidden sm:table-cell print:table-cell">{p?.club ?? '—'}</td>}
-                  {!contest.isTeamEvent && <td className="px-4 py-2 text-gray-500 hidden sm:table-cell print:table-cell">{p?.club ?? '—'}</td>}
-                  <td className="px-4 py-2 text-gray-500 hidden md:table-cell print:table-cell">{p?.country ?? '—'}</td>
+                  {!contest.isTeamEvent && displayConfig.licence.onResults && <td className="px-4 py-2 text-gray-500 hidden md:table-cell print:table-cell">{p?.licenceNumber ?? '—'}</td>}
+                  {!contest.isTeamEvent && displayConfig.dateOfBirth.onResults && <td className="px-4 py-2 text-gray-500 hidden md:table-cell print:table-cell">{birthYear}</td>}
+                  {displayConfig.club.onResults && <td className="px-4 py-2 text-gray-500 hidden sm:table-cell print:table-cell">{p?.club ?? '—'}</td>}
+                  {displayConfig.country.onResults && <td className="px-4 py-2 text-gray-500 hidden md:table-cell print:table-cell">{p?.country ?? '—'}</td>}
                 </tr>
               )
             })}

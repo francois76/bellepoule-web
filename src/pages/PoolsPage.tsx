@@ -29,12 +29,21 @@ export default function PoolsPage() {
 
   // Unified participant map: for team events, maps team IDs to display info;
   // for individual events, maps fencer IDs to display info.
-  type ParticipantInfo = { name: string; club?: string }
+  type ParticipantInfo = { name: string; club?: string; birthDate?: string; licenceNumber?: string }
   const participantMap: Record<string, ParticipantInfo> = contest.isTeamEvent
     ? Object.fromEntries(contest.teams.map(t => [t.id, { name: t.name, club: t.club }]))
-    : Object.fromEntries(contest.fencers.map(f => [f.id, { name: `${f.lastName.toUpperCase()} ${f.firstName}`, club: f.club }]))
+    : Object.fromEntries(contest.fencers.map(f => [f.id, { name: `${f.lastName.toUpperCase()} ${f.firstName}`, club: f.club, birthDate: f.birthDate, licenceNumber: f.licenceNumber }]))
 
   const pool = stage.pools[selectedPool]
+
+  const displayConfig = contest.displayConfig ?? {
+    dateOfBirth:  { visible: true,  onCheckin: true,  onPool: true,  onResults: false },
+    gender:       { visible: true,  onCheckin: true,  onPool: false, onResults: false },
+    club:         { visible: true,  onCheckin: true,  onPool: true,  onResults: true  },
+    country:      { visible: true,  onCheckin: true,  onPool: true,  onResults: true  },
+    licence:      { visible: false, onCheckin: true,  onPool: false, onResults: false },
+    initialRank:  { visible: true,  onCheckin: true,  onPool: true,  onResults: true  },
+  }
 
   const presentCount = contest.isTeamEvent
     ? contest.teams.filter(t => t.present).length
@@ -483,6 +492,7 @@ export default function PoolsPage() {
               contest={contest}
               tournament={tournament}
               referees={contest.referees}
+              displayConfig={displayConfig}
             />
           ))}
         </div>
@@ -494,13 +504,14 @@ export default function PoolsPage() {
 const WEAPON_LABEL: Record<string, string> = { epee: 'Épée', foil: 'Fleuret', sabre: 'Sabre' }
 const GENDER_LABEL: Record<string, string> = { men: 'Messieurs', women: 'Dames', mixed: 'Mixte' }
 
-function PoolScoreSheet({ pool, stage, participantMap, contest, tournament, referees }: {
+function PoolScoreSheet({ pool, stage, participantMap, contest, tournament, referees, displayConfig }: {
   pool: Pool
   stage: PoolPhase
-  participantMap: Record<string, { name: string; club?: string }>
+  participantMap: Record<string, { name: string; club?: string; birthDate?: string; licenceNumber?: string }>
   contest: import('../types').Contest
   tournament: import('../types').Tournament
   referees: Referee[]
+  displayConfig: import('../types').DisplayConfig
 }) {
   const referee = pool.refereeId ? referees.find(r => r.id === pool.refereeId) : undefined
   const refName = referee ? `${referee.lastName.toUpperCase()} ${referee.firstName}` : ''
@@ -519,11 +530,18 @@ function PoolScoreSheet({ pool, stage, participantMap, contest, tournament, refe
 
   const fencers = pool.fencerIds.map((id, idx) => {
     const p = participantMap[id]
+    const infos: string[] = []
+    if (displayConfig.club.onPool && p?.club) infos.push(p.club)
+    if (displayConfig.licence.onPool && p?.licenceNumber) infos.push(p.licenceNumber)
+    if (displayConfig.dateOfBirth.onPool && p?.birthDate) {
+      const year = p.birthDate.split('-')[0]
+      infos.push(year)
+    }
     return {
       id,
       num: idx + 1,
       name: p?.name ?? '?',
-      club: p?.club ?? '',
+      info: infos.join(' · '),
     }
   })
 
@@ -585,7 +603,7 @@ function PoolScoreSheet({ pool, stage, participantMap, contest, tournament, refe
                   <tr key={rowF.id}>
                     <td>{rowF.num}</td>
                     <td className="pg-name" style={{ textAlign: 'left' }}>
-                      {rowF.name}{rowF.club ? ` (${rowF.club})` : ''}
+                      {rowF.name}{rowF.info ? ` (${rowF.info})` : ''}
                     </td>
                     {fencers.map((colF, colIdx) => (
                       rowIdx === colIdx
@@ -633,7 +651,7 @@ function PoolScoreSheet({ pool, stage, participantMap, contest, tournament, refe
             <tr>
               <th>N°</th>
               <th>{contest.isTeamEvent ? 'Équipe' : 'Tireur'}</th>
-              <th>Club / Nation</th>
+              <th>Détails</th>
             </tr>
           </thead>
           <tbody>
@@ -641,7 +659,7 @@ function PoolScoreSheet({ pool, stage, participantMap, contest, tournament, refe
               <tr key={f.id}>
                 <td className="pfl-num">{f.num}</td>
                 <td className="pfl-name">{f.name}</td>
-                <td className="pfl-club">{f.club}</td>
+                <td className="pfl-club">{f.info}</td>
               </tr>
             ))}
           </tbody>
