@@ -569,18 +569,24 @@ export default function CheckinPage() {
                   <option value="F">F</option>
                 </select>
               </div>
-              <div>
-                <label className="label">Club {displayConfig.club.visible && '*'}</label>
-                <input className="input" value={form.club} onChange={e => setForm(f => ({...f, club: e.target.value}))} />
-              </div>
-              <div>
-                <label className="label">N° Licence {displayConfig.licence.visible && '*'}</label>
-                <input className="input" value={form.licenceNumber} onChange={e => setForm(f => ({...f, licenceNumber: e.target.value}))} />
-              </div>
-              <div>
-                <label className="label">Date de naissance {displayConfig.dateOfBirth.visible && '*'}</label>
-                <input type="date" className="input" value={form.birthDate} onChange={e => setForm(f => ({...f, birthDate: e.target.value}))} />
-              </div>
+              {displayConfig.club.visible && (
+                <div>
+                  <label className="label">Club *</label>
+                  <input className="input" value={form.club} onChange={e => setForm(f => ({...f, club: e.target.value}))} />
+                </div>
+              )}
+              {displayConfig.licence.visible && (
+                <div>
+                  <label className="label">N° Licence *</label>
+                  <input className="input" value={form.licenceNumber} onChange={e => setForm(f => ({...f, licenceNumber: e.target.value}))} />
+                </div>
+              )}
+              {displayConfig.dateOfBirth.visible && (
+                <div>
+                  <label className="label">Date de naissance *</label>
+                  <input type="date" className="input" value={form.birthDate} onChange={e => setForm(f => ({...f, birthDate: e.target.value}))} />
+                </div>
+              )}
               <div>
                 <label className="label">Classement initial</label>
                 <input type="number" className="input" value={form.initialRank} onChange={e => setForm(f => ({...f, initialRank: e.target.value}))} placeholder="1" />
