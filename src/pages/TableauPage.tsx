@@ -524,6 +524,24 @@ function BracketPrint({ stage, fencerName, contest, tournament }: PrintProps) {
   )
 }
 
+const QuickPopup = ({ scores, colorClass, popupPos, handleQuick }: {
+  scores: { sa: number; sb: number }[]
+  colorClass: string
+  popupPos: { top?: number; bottom?: number; left?: number; right?: number }
+  handleQuick: (sa: number, sb: number) => void
+}) => (
+  <div style={{ position: 'fixed', top: popupPos.top, bottom: popupPos.bottom, left: popupPos.left, right: popupPos.right, zIndex: 9999 }}
+    className="bg-white border border-gray-200 rounded-lg shadow-xl p-1.5 flex flex-col gap-1">
+    {scores.map(({ sa, sb }) => (
+      <button key={`${sa}-${sb}`}
+        className={`text-xs px-1.5 py-0.5 rounded font-mono whitespace-nowrap transition-colors ${colorClass}`}
+        onClick={() => handleQuick(sa, sb)}>
+        {sa}-{sb}
+      </button>
+    ))}
+  </div>
+)
+
 function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBInput, onScoreAChange, onScoreBChange, onEdit, onSave, onCancel, onQuickScore, roundLocked }: {
   bout: TableauBout
   nameA: string
@@ -581,23 +599,17 @@ function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, sco
     setOpenSide(p => p === side ? null : side)
   }
 
-  const QuickPopup = ({ scores, colorClass }: { scores: { sa: number; sb: number }[]; colorClass: string }) => (
-    <div style={{ position: 'fixed', top: popupPos?.top, bottom: popupPos?.bottom, left: popupPos?.left, right: popupPos?.right, zIndex: 9999 }}
-      className="bg-white border border-gray-200 rounded-lg shadow-xl p-1.5 flex flex-col gap-1">
-      {scores.map(({ sa, sb }) => (
-        <button key={`${sa}-${sb}`}
-          className={`text-xs px-1.5 py-0.5 rounded font-mono whitespace-nowrap transition-colors ${colorClass}`}
-          onClick={() => handleQuick(sa, sb)}>
-          {sa}-{sb}
-        </button>
-      ))}
-    </div>
-  )
-
   return (
     <div className={`border rounded-lg shadow-sm ${hasResult ? 'border-green-200' : 'border-gray-200'}`}>
       {openSide && <div className="fixed inset-0 z-[9998]" onClick={() => { setOpenSide(null); setPopupPos(null) }} />}
-      {openSide && popupPos && <QuickPopup scores={openSide === 'A' ? quickScoresA : quickScoresB} colorClass={openSide === 'A' ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-blue-100 text-blue-800 hover:bg-blue-200'} />}
+      {openSide && popupPos && (
+        <QuickPopup
+          scores={openSide === 'A' ? quickScoresA : quickScoresB}
+          colorClass={openSide === 'A' ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-blue-100 text-blue-800 hover:bg-blue-200'}
+          popupPos={popupPos}
+          handleQuick={handleQuick}
+        />
+      )}
 
       {/* Row A */}
       <div className={`flex items-center justify-between px-3 py-2 rounded-t-lg ${isWinnerA ? 'bg-green-50' : ''} ${isByeA ? 'opacity-40 italic' : ''}`}>

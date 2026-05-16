@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import type { Tournament, Contest, Fencer, Referee, Team, PoolPhase, PoolBout, BarragePhase, TableauPhase, TableauBout, TableauSize, MatchResult, FencerPoolStatus, FencedPlaces } from '../types'
 import { getAllTournaments, saveTournament, deleteTournament } from '../db'
-import { allocatePools, fieBoutOrder } from '../logic/pools'
+import { allocatePools } from '../logic/pools'
 import { buildBracket, propagateByes } from '../logic/tableau'
 
 interface AppState {
@@ -853,10 +853,9 @@ export const useStore = create<AppState>((set, get) => ({
     let bouts = propagateByes(phase.bouts)
     for (const round of rounds) {
       // Re-filter each iteration so 3rd place bout is picked up after semi-finals are scored
-      let hasMore = true
-      while (hasMore) {
+      while (true) {
         const unscored = bouts.filter(b => b.round === round && b.fencerAId && b.fencerBId && !b.winnerId)
-        if (unscored.length === 0) { hasMore = false; break }
+        if (unscored.length === 0) break
         const bout = unscored[0]
         const aWins = Math.random() < 0.5
         const loserScore = Math.floor(Math.random() * maxScore)

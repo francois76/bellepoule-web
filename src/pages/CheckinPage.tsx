@@ -42,6 +42,13 @@ export default function CheckinPage() {
   const [fencerSort, setFencerSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'lastName', dir: 'asc' })
   const [teamSort, setTeamSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'name', dir: 'asc' })
 
+  const editingTeamRowRef = useRef<HTMLTableRowElement>(null)
+  useEffect(() => {
+    if (editingTeamId) {
+      editingTeamRowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  }, [editingTeamId])
+
   if (!tournament || !contest) return <div className="text-red-500">Compétition introuvable</div>
 
   const displayConfig = contest.displayConfig ?? DEFAULT_DISPLAY_CONFIG
@@ -172,13 +179,6 @@ export default function CheckinPage() {
 
   // ── Team edit ─────────────────────────────────────────────────────────────
 
-  const editingTeamRowRef = useRef<HTMLTableRowElement>(null)
-  useEffect(() => {
-    if (editingTeamId) {
-      editingTeamRowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-    }
-  }, [editingTeamId])
-
   function startEditTeam(team: Team) {
     setEditingTeamId(team.id)
     setEditTeamForm({
@@ -189,51 +189,16 @@ export default function CheckinPage() {
     })
   }
 
-  async function handleSaveTeam(e: React.FormEvent, team: Team) {
+  function handleSaveTeam(e: React.FormEvent, team: Team) {
     e.preventDefault()
     if (!editTeamForm.name.trim()) return
-    await updateTeam(tournamentId!, contestId!, {
+    updateTeam(tournamentId!, contestId!, {
       ...team,
       name: editTeamForm.name.trim(),
       club: editTeamForm.club.trim() || undefined,
       initialRank: editTeamForm.initialRank ? parseInt(editTeamForm.initialRank) : undefined,
       fencerIds: editTeamForm.fencerIds,
-    })
-    setEditingTeamId(null)
-  }
-
-  function toggleTeamMember(fencerId: string, current: string[], setter: (ids: string[]) => void) {
-    setter(current.includes(fencerId) ? current.filter(id => id !== fencerId) : [...current, fencerId])
-  }
-
-  // ── Team member picker ────────────────────────────────────────────────────
-
-  function TeamMemberPicker({ fencerIds, onChange }: { fencerIds: string[]; onChange: (ids: string[]) => void }) {
-    const visible = contest!.fencers.filter(f =>
-      fencerIds.includes(f.id) ||
-      !contest!.teams.some(t => t.fencerIds.includes(f.id) && t.id !== editingTeamId)
-    )
-    if (visible.length === 0) {
-      return <p className="text-xs text-gray-400 col-span-full">Aucun tireur disponible — ajoutez d'abord des tireurs.</p>
-    }
-    return (
-      <div className="col-span-full">
-        <label className="label">Membres</label>
-        <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-2 grid grid-cols-2 sm:grid-cols-3 gap-1">
-          {visible.map(f => (
-            <label key={f.id} className="flex items-center gap-1 text-sm cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5">
-              <input
-                type="checkbox"
-                checked={fencerIds.includes(f.id)}
-                onChange={() => toggleTeamMember(f.id, fencerIds, onChange)}
-                className="accent-blue-600"
-              />
-              <span>{f.lastName.toUpperCase()} {f.firstName}</span>
-            </label>
-          ))}
-        </div>
-      </div>
-    )
+    }).then(() => setEditingTeamId(null))
   }
 
   // ── Import ────────────────────────────────────────────────────────────────
@@ -433,6 +398,8 @@ export default function CheckinPage() {
                   <TeamMemberPicker
                     fencerIds={teamForm.fencerIds}
                     onChange={ids => setTeamForm(f => ({ ...f, fencerIds: ids }))}
+                    contest={contest}
+                    editingTeamId={editingTeamId}
                   />
                 </div>
                 <div className="flex gap-2 justify-end">
@@ -483,6 +450,8 @@ export default function CheckinPage() {
                                   <TeamMemberPicker
                                     fencerIds={editTeamForm.fencerIds}
                                     onChange={ids => setEditTeamForm(f => ({ ...f, fencerIds: ids }))}
+                                    contest={contest}
+                                    editingTeamId={editingTeamId}
                                   />
                                 </div>
                                 <div className="flex gap-2 justify-end">
@@ -699,6 +668,38 @@ export default function CheckinPage() {
             </div>
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function toggleTeamMember(fencerId: string, current: string[], setter: (ids: string[]) => void) {
+  setter(current.includes(fencerId) ? current.filter(id => id !== fencerId) : [...current, fencerId])
+}
+
+function TeamMemberPicker({ fencerIds, onChange, contest, editingTeamId }: { fencerIds: string[]; onChange: (ids: string[]) => void; contest: import('../types').Contest; editingTeamId: string | null }) {
+  const visible = contest.fencers.filter(f =>
+    fencerIds.includes(f.id) ||
+    !contest.teams.some(t => t.fencerIds.includes(f.id) && t.id !== editingTeamId)
+  )
+  if (visible.length === 0) {
+    return <p className="text-xs text-gray-400 col-span-full">Aucun tireur disponible — ajoutez d'abord des tireurs.</p>
+  }
+  return (
+    <div className="col-span-full">
+      <label className="label">Membres</label>
+      <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-2 grid grid-cols-2 sm:grid-cols-3 gap-1">
+        {visible.map(f => (
+          <label key={f.id} className="flex items-center gap-1 text-sm cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5">
+            <input
+              type="checkbox"
+              checked={fencerIds.includes(f.id)}
+              onChange={() => toggleTeamMember(f.id, fencerIds, onChange)}
+              className="accent-blue-600"
+            />
+            <span>{f.lastName.toUpperCase()} {f.firstName}</span>
+          </label>
+        ))}
       </div>
     </div>
   )

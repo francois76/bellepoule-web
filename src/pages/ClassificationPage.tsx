@@ -29,7 +29,7 @@ export default function ClassificationPage() {
     source: string
   }
 
-  let entries: RankEntry[] = []
+  let entries: RankEntry[]
 
   if (lastTableau) {
     // Pool rank lookup for tie-breaking within elimination groups
