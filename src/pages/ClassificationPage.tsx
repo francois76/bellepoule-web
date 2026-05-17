@@ -1,6 +1,7 @@
 import { useParams, Link } from 'react-router-dom'
 import { useStore } from '../store'
 import type { PoolPhase, TableauPhase } from '../types'
+import { DEFAULT_DISPLAY_CONFIG } from '../types'
 
 const WEAPON_LABEL: Record<string, string> = { epee: 'Épée', foil: 'Fleuret', sabre: 'Sabre' }
 const GENDER_LABEL: Record<string, string> = { men: 'Messieurs', women: 'Dames', mixed: 'Mixte' }
@@ -13,14 +14,7 @@ export default function ClassificationPage() {
 
   if (!tournament || !contest) return <div className="text-red-500">Compétition introuvable</div>
 
-  const displayConfig = contest.displayConfig ?? {
-    dateOfBirth:  { visible: true,  onCheckin: true,  onPool: true,  onResults: false },
-    gender:       { visible: true,  onCheckin: true,  onPool: false, onResults: false },
-    club:         { visible: true,  onCheckin: true,  onPool: true,  onResults: true  },
-    country:      { visible: true,  onCheckin: true,  onPool: true,  onResults: true  },
-    licence:      { visible: false, onCheckin: true,  onPool: false, onResults: false },
-    initialRank:  { visible: true,  onCheckin: true,  onPool: true,  onResults: true  },
-  }
+  const displayConfig = contest.displayConfig ?? DEFAULT_DISPLAY_CONFIG
 
   // Unified participant map: team IDs → name/club for team events, fencer IDs for individual events
   type ParticipantInfo = { name: string; firstName?: string; club?: string; country?: string; birthDate?: string; licenceNumber?: string }

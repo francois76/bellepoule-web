@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useStore } from '../store'
 import type { PoolPhase, PoolBout, Pool, Referee, FencerPoolStatus } from '../types'
+import { DEFAULT_DISPLAY_CONFIG } from '../types'
 import { poolCountFromSize, poolSizeDescription } from '../logic/pools'
 
 export default function PoolsPage() {
@@ -36,14 +37,7 @@ export default function PoolsPage() {
 
   const pool = stage.pools[selectedPool]
 
-  const displayConfig = contest.displayConfig ?? {
-    dateOfBirth:  { visible: true,  onCheckin: true,  onPool: true,  onResults: false },
-    gender:       { visible: true,  onCheckin: true,  onPool: false, onResults: false },
-    club:         { visible: true,  onCheckin: true,  onPool: true,  onResults: true  },
-    country:      { visible: true,  onCheckin: true,  onPool: true,  onResults: true  },
-    licence:      { visible: false, onCheckin: true,  onPool: false, onResults: false },
-    initialRank:  { visible: true,  onCheckin: true,  onPool: true,  onResults: true  },
-  }
+  const displayConfig = contest.displayConfig ?? DEFAULT_DISPLAY_CONFIG
 
   const presentCount = contest.isTeamEvent
     ? contest.teams.filter(t => t.present).length

@@ -72,11 +72,11 @@ export interface DisplayConfig {
 
 /** Valeurs par défaut (même comportement que l'ancienne application) */
 export const DEFAULT_DISPLAY_CONFIG: DisplayConfig = {
-  dateOfBirth:  { visible: true,  onCheckin: true,  onPool: true,  onResults: false },
-  gender:       { visible: true,  onCheckin: true,  onPool: false, onResults: false },
+  dateOfBirth:  { visible: true,  onCheckin: true,  onPool: false, onResults: false },
+  gender:       { visible: false, onCheckin: false, onPool: false, onResults: false },
   club:         { visible: true,  onCheckin: true,  onPool: true,  onResults: true  },
-  country:      { visible: true,  onCheckin: true,  onPool: true,  onResults: true  },
-  licence:      { visible: false, onCheckin: true,  onPool: false, onResults: false },
+  country:      { visible: false, onCheckin: false, onPool: false, onResults: false },
+  licence:      { visible: false, onCheckin: false, onPool: false, onResults: false },
   initialRank:  { visible: true,  onCheckin: true,  onPool: true,  onResults: true  },
 }
 
