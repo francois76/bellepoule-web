@@ -74,6 +74,7 @@ export default function ContestPage() {
   const [tableauModal, setTableauModal] = useState(false)
   const [tableauForm, setTableauForm] = useState({ size: '64', maxScore: '15', fencedPlaces: 'third_place' as FencedPlaces })
   const [tableauAutoSize, setTableauAutoSize] = useState<number | null>(null)
+  const [tableauMinCount, setTableauMinCount] = useState<number>(0)
 
   const [barrageModal, setBarrageModal] = useState(false)
   const [barrageForm, setBarrageForm] = useState({ name: '', maxScore: '5' })
@@ -122,9 +123,12 @@ export default function ContestPage() {
     const qualifiedCount = contest!.isTeamEvent
       ? qualifiedIds.filter(id => (contest!.teams ?? []).find(t => t.id === id)?.present !== false).length
       : qualifiedIds.filter(id => contest!.fencers.find(f => f.id === id)?.present !== false).length
-    let autoSize: number = qualifiedCount > 0 ? 4 : 64
-    if (qualifiedCount > 0) { while (autoSize < qualifiedCount) autoSize *= 2 }
-    setTableauAutoSize(qualifiedCount > 0 ? autoSize : null)
+    // Fallback to presentCount when no pool phase has been run
+    const effectiveCount = qualifiedCount > 0 ? qualifiedCount : presentCount
+    let autoSize: number = effectiveCount > 0 ? 4 : 64
+    if (effectiveCount > 0) { while (autoSize < effectiveCount) autoSize *= 2 }
+    setTableauAutoSize(autoSize)
+    setTableauMinCount(effectiveCount)
     setTableauForm({ size: String(autoSize), maxScore: suggestedMaxScore(contest?.category, 'tableau'), fencedPlaces: 'third_place' })
     setTableauModal(true)
   }
@@ -443,9 +447,14 @@ export default function ContestPage() {
                 <label className="label">Taille du tableau</label>
                 <select className="input" value={tableauForm.size}
                   onChange={e => setTableauForm(f => ({ ...f, size: e.target.value }))}>
-                  {TABLEAU_SIZES.map(s => (
-                    <option key={s} value={String(s)}>{s}{tableauAutoSize === s ? ' (suggéré)' : ''}</option>
-                  ))}
+                  {TABLEAU_SIZES.map(s => {
+                    const tooLarge = tableauMinCount > 0 && s > 2 * tableauMinCount
+                    return (
+                      <option key={s} value={String(s)} disabled={tooLarge}>
+                        {s}{tableauAutoSize === s ? ' (suggéré)' : ''}{tooLarge ? ' (trop grand — 1er tour vide)' : ''}
+                      </option>
+                    )
+                  })}
                 </select>
               </div>
               <div>
