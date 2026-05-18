@@ -9,12 +9,28 @@ interface Props {
   tournamentId: string
 }
 
+const PALETTE = [
+  '#1e3a5f', '#2563eb', '#7c3aed', '#db2777', '#dc2626',
+  '#ea580c', '#d97706', '#16a34a', '#0891b2', '#0f766e',
+]
+
+function randomColor() {
+  return PALETTE[Math.floor(Math.random() * PALETTE.length)]
+}
+
 export function ContestBreadcrumb({ tournament, contest, tournamentId }: Props) {
   const navigate = useNavigate()
   const { updateContest } = useStore()
-  const color = contest.color ?? null
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
+
+  // Assign a random color on first render if none set
+  useEffect(() => {
+    if (!contest.color) {
+      updateContest(tournamentId, { ...contest, color: randomColor() })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contest.id])
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -26,39 +42,105 @@ export function ContestBreadcrumb({ tournament, contest, tournamentId }: Props) 
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  const borderColor = color ?? '#d1d5db'
+  const color = contest.color ?? '#d1d5db'
 
   return (
     <span ref={ref} className="inline-flex items-center gap-1.5 relative">
-      {/* Trigger button */}
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
+      {/* Split button */}
+      <span
         style={{
-          border: `3px solid ${borderColor}`,
+          display: 'inline-flex',
+          alignItems: 'stretch',
+          border: `3px solid ${color}`,
           borderRadius: '7px',
-          padding: '4px 28px 4px 10px',
-          fontWeight: 600,
-          fontSize: '0.875rem',
-          color: '#1f2937',
-          background: 'white',
-          cursor: 'pointer',
-          outline: 'none',
-          maxWidth: '280px',
-          whiteSpace: 'nowrap',
           overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          position: 'relative',
-          lineHeight: '1.4',
+          background: 'white',
         }}
       >
-        {contest.name}
-        {/* chevron */}
-        <span style={{
-          position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
-          fontSize: '0.65rem', opacity: 0.5, pointerEvents: 'none',
-        }}>▼</span>
-      </button>
+        {/* Left: navigate to current contest */}
+        <button
+          type="button"
+          onClick={() => navigate(`/tournament/${tournamentId}/contest/${contest.id}`)}
+          style={{
+            padding: '4px 10px',
+            fontWeight: 600,
+            fontSize: '0.875rem',
+            color: '#1f2937',
+            background: 'transparent',
+            cursor: 'pointer',
+            outline: 'none',
+            maxWidth: '240px',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            lineHeight: '1.4',
+            border: 'none',
+          }}
+          title={`Aller à ${contest.name}`}
+        >
+          {contest.name}
+        </button>
+
+        {/* Separator */}
+        <span style={{ width: '1px', background: color, margin: '3px 0', flexShrink: 0 }} />
+
+        {/* Middle: color picker */}
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            padding: '0 7px',
+            cursor: 'pointer',
+            background: 'transparent',
+            borderLeft: 'none',
+            borderRight: 'none',
+          }}
+          title="Changer la couleur"
+        >
+          <input
+            type="color"
+            value={color}
+            onChange={e => updateContest(tournamentId, { ...contest, color: e.target.value })}
+            style={{ width: '1px', height: '1px', opacity: 0, border: 'none', padding: 0, margin: 0 }}
+          />
+          {/* Color swatch */}
+          <span
+            style={{
+              display: 'inline-block',
+              width: '12px',
+              height: '12px',
+              borderRadius: '50%',
+              background: color,
+              border: '1.5px solid rgba(0,0,0,0.15)',
+              flexShrink: 0,
+            }}
+          />
+        </label>
+
+        {/* Separator */}
+        <span style={{ width: '1px', background: color, margin: '3px 0', flexShrink: 0 }} />
+
+        {/* Right: open dropdown */}
+        <button
+          type="button"
+          onClick={() => setOpen(o => !o)}
+          style={{
+            padding: '4px 8px',
+            background: open ? `${color}22` : 'transparent',
+            cursor: 'pointer',
+            outline: 'none',
+            border: 'none',
+            lineHeight: '1',
+            color: '#6b7280',
+            fontSize: '0.6rem',
+            transition: 'background 0.12s',
+          }}
+          title="Changer de compétition"
+          aria-label="Changer de compétition"
+        >
+          {open ? '▲' : '▼'}
+        </button>
+      </span>
 
       {/* Dropdown list */}
       {open && (
@@ -122,30 +204,6 @@ export function ContestBreadcrumb({ tournament, contest, tournamentId }: Props) 
             )
           })}
         </ul>
-      )}
-
-      {/* Color picker */}
-      <label className="cursor-pointer leading-none" title="Couleur de la compétition">
-        <input
-          type="color"
-          value={color ?? '#1e3a5f'}
-          onChange={e => updateContest(tournamentId, { ...contest, color: e.target.value })}
-          className="sr-only"
-        />
-        <span
-          className="text-sm transition-opacity hover:opacity-100"
-          style={{ opacity: color ? 0.6 : 0.35 }}
-          aria-hidden
-        >🎨</span>
-      </label>
-
-      {color && (
-        <button
-          className="text-gray-300 hover:text-gray-500 transition-colors leading-none text-xs font-bold"
-          title="Retirer la couleur"
-          onClick={() => updateContest(tournamentId, { ...contest, color: undefined })}
-          aria-label="Retirer la couleur"
-        >✕</button>
       )}
     </span>
   )

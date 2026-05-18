@@ -59,6 +59,17 @@ export default function CheckinPage() {
     `${f.lastName} ${f.firstName} ${f.club ?? ''} ${f.licenceNumber ?? ''}`.toLowerCase().includes(filter.toLowerCase())
   )
   const presentCount = contest.fencers.filter(f => f.present).length
+  const totalFencers = contest.fencers.length
+  const allFencersPresent = totalFencers > 0 && presentCount === totalFencers
+
+  const presentTeams = contest.teams.filter(t => t.present !== false).length
+  const totalTeams = contest.teams.length
+  const allTeamsPresent = totalTeams > 0 && presentTeams === totalTeams
+
+  // Global "all present" state: no absent fencers and (if team event) no absent teams
+  const allPresent = contest.isTeamEvent
+    ? allFencersPresent && allTeamsPresent
+    : allFencersPresent
 
   function toggleFencerSort(key: string) {
     setFencerSort(prev => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' })
@@ -385,11 +396,35 @@ export default function CheckinPage() {
 
         <div className="shrink-0 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-800">Checkin</h1>
-          {contest.isTeamEvent
-            ? <span className="text-lg font-semibold text-blue-700">{contest.teams.filter(t => t.present !== false).length} / {contest.teams.length} équipes présentes</span>
-            : <span className="text-lg font-semibold text-blue-700">{presentCount} / {contest.fencers.length} présents</span>
-          }
+          <div className="flex items-center gap-3">
+            {contest.isTeamEvent && (
+              <span className={`text-base font-semibold flex items-center gap-1.5 ${allTeamsPresent ? 'text-green-700' : 'text-orange-600'}`}>
+                {allTeamsPresent ? '✔' : '⚠'}
+                {presentTeams} / {totalTeams} équipe{totalTeams > 1 ? 's' : ''} présente{totalTeams > 1 ? 's' : ''}
+              </span>
+            )}
+            <span className={`text-base font-semibold flex items-center gap-1.5 ${allFencersPresent ? 'text-green-700' : 'text-orange-600'}`}>
+              {allFencersPresent ? '✔' : '⚠'}
+              {presentCount} / {totalFencers} tireur{totalFencers > 1 ? 's' : ''} présent{totalFencers > 1 ? 's' : ''}
+            </span>
+          </div>
         </div>
+
+        {/* Presence status banner */}
+        {totalFencers > 0 && (
+          <div className={`shrink-0 rounded-lg px-4 py-3 text-sm flex items-start gap-2 ${allPresent ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-orange-50 border border-orange-200 text-orange-800'}`}>
+            <span className="text-lg leading-none mt-0.5">{allPresent ? '✅' : '⚠️'}</span>
+            {allPresent
+              ? <span><strong>Tout le monde est présent.</strong> La compétition peut démarrer.</span>
+              : <span>
+                  <strong>Checkin incomplet.</strong>{' '}
+                  {!allFencersPresent && <span>{totalFencers - presentCount} tireur{totalFencers - presentCount > 1 ? 's' : ''} non présent{totalFencers - presentCount > 1 ? 's' : ''}. </span>}
+                  {contest.isTeamEvent && !allTeamsPresent && <span>{totalTeams - presentTeams} équipe{totalTeams - presentTeams > 1 ? 's' : ''} non présente{totalTeams - presentTeams > 1 ? 's' : ''}. </span>}
+                  Les tireurs et équipes non cochés <strong>ne seront pas intégrés à la compétition</strong> lors de l'allocation des poules ou du tableau.
+                </span>
+            }
+          </div>
+        )}
 
         {/* Teams section — team events only */}
         {contest.isTeamEvent && (
