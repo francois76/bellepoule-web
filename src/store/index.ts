@@ -105,6 +105,24 @@ function mutateContest(t: Tournament, contestId: string, fn: (c: Contest) => Con
   }
 }
 
+/**
+ * Auto-uncheck teams whose present-member count falls below minTeamSize.
+ * Works on an already-updated contest (fencers and teams already mutated).
+ */
+function enforceTeamPresence(c: Contest): Contest {
+  if (!c.isTeamEvent) return c
+  const minTeamSize = c.minTeamSize ?? 3
+  if (minTeamSize < 1) return c
+  const teams = c.teams.map(team => {
+    if (team.present === false) return team // already absent
+    const presentCount = team.fencerIds.filter(fId =>
+      c.fencers.some(f => f.id === fId && f.present === true)
+    ).length
+    return presentCount < minTeamSize ? { ...team, present: false } : team
+  })
+  return { ...c, teams }
+}
+
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 export const useStore = create<AppState>((set, get) => ({
@@ -215,10 +233,10 @@ export const useStore = create<AppState>((set, get) => ({
   setPresence: async (tournamentId, contestId, fencerId, present) => {
     const { tournaments } = get()
     const t = getTournamentOrThrow(tournaments, tournamentId)
-    const updated = mutateContest(t, contestId, c => ({
-      ...c,
-      fencers: c.fencers.map(f => f.id === fencerId ? { ...f, present } : f),
-    }))
+    const updated = mutateContest(t, contestId, c => {
+      const withUpdatedFencer = { ...c, fencers: c.fencers.map(f => f.id === fencerId ? { ...f, present } : f) }
+      return enforceTeamPresence(withUpdatedFencer)
+    })
     await saveTournament(updated)
     set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
   },
@@ -227,11 +245,15 @@ export const useStore = create<AppState>((set, get) => ({
     const { tournaments } = get()
     const t = getTournamentOrThrow(tournaments, tournamentId)
     // Update fencers and teams in one single mutation to avoid concurrent write races
-    const updated = mutateContest(t, contestId, c => ({
-      ...c,
-      fencers: c.fencers.map(f => ({ ...f, present })),
-      teams: c.teams.map(team => ({ ...team, present })),
-    }))
+    const updated = mutateContest(t, contestId, c => {
+      const updatedFencers = c.fencers.map(f => ({ ...f, present }))
+      // For teams: re-run enforceTeamPresence on the updated fencer list
+      // (when marking all absent, all teams become absent too)
+      if (!present) {
+        return { ...c, fencers: updatedFencers, teams: c.teams.map(tm => ({ ...tm, present: false })) }
+      }
+      return enforceTeamPresence({ ...c, fencers: updatedFencers, teams: c.teams.map(tm => ({ ...tm, present: true })) })
+    })
     await saveTournament(updated)
     set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
   },
@@ -284,10 +306,10 @@ export const useStore = create<AppState>((set, get) => ({
   updateTeam: async (tournamentId, contestId, team) => {
     const { tournaments } = get()
     const t = getTournamentOrThrow(tournaments, tournamentId)
-    const updated = mutateContest(t, contestId, c => ({
-      ...c,
-      teams: c.teams.map(tm => tm.id === team.id ? team : tm),
-    }))
+    const updated = mutateContest(t, contestId, c => {
+      const withUpdatedTeam = { ...c, teams: c.teams.map(tm => tm.id === team.id ? team : tm) }
+      return enforceTeamPresence(withUpdatedTeam)
+    })
     await saveTournament(updated)
     set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
   },
@@ -321,10 +343,23 @@ export const useStore = create<AppState>((set, get) => ({
   setTeamPresence: async (tournamentId, contestId, teamId, present) => {
     const { tournaments } = get()
     const t = getTournamentOrThrow(tournaments, tournamentId)
-    const updated = mutateContest(t, contestId, c => ({
-      ...c,
-      teams: c.teams.map(team => team.id === teamId ? { ...team, present } : team),
-    }))
+    const updated = mutateContest(t, contestId, c => {
+      // Enforce minTeamSize: cannot mark a team present if not enough members are present
+      if (present && c.isTeamEvent) {
+        const minTeamSize = c.minTeamSize ?? 3
+        const team = c.teams.find(team => team.id === teamId)
+        if (team) {
+          const presentCount = team.fencerIds.filter(fId =>
+            c.fencers.some(f => f.id === fId && f.present === true)
+          ).length
+          if (presentCount < minTeamSize) return c // no-op
+        }
+      }
+      return {
+        ...c,
+        teams: c.teams.map(team => team.id === teamId ? { ...team, present } : team),
+      }
+    })
     await saveTournament(updated)
     set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
   },

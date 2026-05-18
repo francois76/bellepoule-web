@@ -518,9 +518,15 @@ export default function CheckinPage() {
                       return (
                         <tr key={team.id} className={`border-b border-gray-100 ${idx % 2 === 0 ? '' : 'bg-gray-50'} ${!team.present ? 'opacity-50' : ''}`}>
                           <td className="px-4 py-2">
-                            <input type="checkbox" checked={team.present !== false}
+                            <input
+                              type="checkbox"
+                              checked={team.present !== false}
+                              disabled={presentMembers < minTeamSize && team.present === false}
+                              title={presentMembers < minTeamSize && team.present === false
+                                ? `Minimum requis : ${minTeamSize} membre(s) présent(s) (${presentMembers} actuellement)`
+                                : undefined}
                               onChange={e => setTeamPresence(tournamentId!, contestId!, team.id, e.target.checked)}
-                              className="w-4 h-4 accent-blue-600" />
+                              className="w-4 h-4 accent-blue-600 disabled:opacity-40 disabled:cursor-not-allowed" />
                           </td>
                           <td className="px-4 py-2 font-medium text-gray-800">{team.name}</td>
                           <td className="px-4 py-2 text-gray-500 hidden sm:table-cell">{team.club ?? '—'}</td>
