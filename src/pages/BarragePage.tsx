@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useStore } from '../store'
 import type { BarragePhase } from '../types'
 import { ContestBreadcrumb } from '../components/ContestBreadcrumb'
+import { BackArrow } from '../components/BackArrow'
 
 export default function BarragePage() {
   const { tournamentId, contestId, stageId } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
@@ -67,6 +68,7 @@ export default function BarragePage() {
     <div className="space-y-5">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-gray-500 flex-wrap">
+        <BackArrow />
         <Link to="/" className="hover:text-blue-600">Tournois</Link>
         <span>/</span>
         <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>

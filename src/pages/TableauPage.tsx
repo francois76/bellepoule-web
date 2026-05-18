@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useStore } from '../store'
 import type { TableauPhase, TableauBout } from '../types'
 import { ContestBreadcrumb } from '../components/ContestBreadcrumb'
+import { BackArrow } from '../components/BackArrow'
 
 const WEAPON_LABEL: Record<string, string> = { epee: 'Épée', foil: 'Fleuret', sabre: 'Sabre' }
 const GENDER_LABEL: Record<string, string> = { men: 'Messieurs', women: 'Dames', mixed: 'Mixte' }
@@ -137,6 +138,7 @@ export default function TableauPage() {
       <style>{`@page { size: A4 landscape; margin: 1.5cm 1cm 2.5cm 1cm; }`}</style>
       {/* Breadcrumb */}
       <div className="print:hidden flex items-center gap-2 text-sm text-gray-500 flex-wrap">
+        <BackArrow />
         <Link to="/" className="hover:text-blue-600">Tournois</Link>
         <span>/</span>
         <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>

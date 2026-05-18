@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useStore } from '../store'
+import { BackArrow } from '../components/BackArrow'
 import { importBellePouleXML, importFFF, importCotcotPhases, readFileText } from '../logic/importExport'
 import type { Contest } from '../types'
 import { FENCING_CATEGORIES, DEFAULT_DISPLAY_CONFIG } from '../types'
@@ -127,6 +128,7 @@ export default function TournamentPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-sm text-gray-500">
+        <BackArrow />
         <Link to="/" className="hover:text-blue-600">Tournois</Link>
         <span>/</span>
         <span className="text-gray-800 font-medium">{tournament.name}</span>

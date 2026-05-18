@@ -5,6 +5,7 @@ import { exportTournamentJSON, exportContestFFF } from '../logic/importExport'
 import type { TableauSize, PoolPhase, FencedPlaces, DisplayConfig, DisplayFieldConfig } from '../types'
 import { DEFAULT_DISPLAY_CONFIG, FENCING_CATEGORIES } from '../types'
 import { ContestBreadcrumb } from '../components/ContestBreadcrumb'
+import { BackArrow } from '../components/BackArrow'
 
 const stageLabel: Record<string, string> = {
   checkin: 'Checkin',
@@ -188,6 +189,7 @@ export default function ContestPage() {
     <div className="space-y-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-gray-500">
+        <BackArrow />
         <Link to="/" className="hover:text-blue-600">Tournois</Link>
         <span>/</span>
         <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { ContestBreadcrumb } from '../components/ContestBreadcrumb'
+import { BackArrow } from '../components/BackArrow'
 import { useStore } from '../store'
 import type { PoolPhase, PoolBout, Pool, Referee, FencerPoolStatus } from '../types'
 import { DEFAULT_DISPLAY_CONFIG } from '../types'
@@ -136,6 +137,7 @@ export default function PoolsPage() {
       )}
       {/* Breadcrumb */}
       <div className="print:hidden flex items-center gap-2 text-sm text-gray-500 flex-wrap">
+        <BackArrow />
         <Link to="/" className="hover:text-blue-600">Tournois</Link>
         <span>/</span>
         <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>

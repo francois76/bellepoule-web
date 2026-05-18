@@ -4,6 +4,7 @@ import { useStore } from '../store'
 import { importFFF, importBellePouleXML, readFileText } from '../logic/importExport'
 import type { Fencer, Team } from '../types'
 import { ContestBreadcrumb } from '../components/ContestBreadcrumb'
+import { BackArrow } from '../components/BackArrow'
 import { DEFAULT_DISPLAY_CONFIG } from '../types'
 
 const DEV_LAST_NAMES = ['Martin','Bernard','Dubois','Thomas','Robert','Richard','Petit','Durand','Leroy','Moreau','Simon','Laurent','Lefebvre','Michel','Garcia','David','Bertrand','Roux','Vincent','Fournier','Morel','Girard','Andre','Lefevre','Mercier','Dupont','Lambert','Bonnet','François','Martinez']
@@ -385,6 +386,7 @@ export default function CheckinPage() {
       <div className="checkin-screen-only flex flex-col gap-5 h-full">
         {/* Breadcrumb */}
         <div className="shrink-0 flex items-center gap-2 text-sm text-gray-500">
+          <BackArrow />
           <Link to="/" className="hover:text-blue-600">Tournois</Link>
           <span>/</span>
           <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>

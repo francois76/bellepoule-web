@@ -3,6 +3,7 @@ import { useStore } from '../store'
 import type { PoolPhase, TableauPhase } from '../types'
 import { DEFAULT_DISPLAY_CONFIG } from '../types'
 import { ContestBreadcrumb } from '../components/ContestBreadcrumb'
+import { BackArrow } from '../components/BackArrow'
 
 const WEAPON_LABEL: Record<string, string> = { epee: 'Épée', foil: 'Fleuret', sabre: 'Sabre' }
 const GENDER_LABEL: Record<string, string> = { men: 'Messieurs', women: 'Dames', mixed: 'Mixte' }
@@ -118,6 +119,7 @@ export default function ClassificationPage() {
     <div className="space-y-5">
       {/* Breadcrumb */}
       <div className="print:hidden flex items-center gap-2 text-sm text-gray-500 flex-wrap">
+        <BackArrow />
         <Link to="/" className="hover:text-blue-600">Tournois</Link>
         <span>/</span>
         <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>
