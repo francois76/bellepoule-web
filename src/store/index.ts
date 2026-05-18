@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import type { Tournament, Contest, Fencer, Referee, Team, PoolPhase, PoolBout, BarragePhase, TableauPhase, TableauBout, TableauSize, MatchResult, FencerPoolStatus, FencedPlaces } from '../types'
 import { getAllTournaments, saveTournament, deleteTournament } from '../db'
-import { allocatePools } from '../logic/pools'
+import { allocatePools, applySeparationCriteria } from '../logic/pools'
 import { buildBracket, propagateByes } from '../logic/tableau'
 
 interface AppState {
@@ -41,7 +41,7 @@ interface AppState {
   // Stages
   addPoolPhase: (tournamentId: string, contestId: string, name: string, maxScore: number, promotionPercent: number) => Promise<void>
   removeStage: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
-  allocatePoolPhase: (tournamentId: string, contestId: string, stageId: string, poolCount: number, seedingBalanced?: boolean) => Promise<void>
+  allocatePoolPhase: (tournamentId: string, contestId: string, stageId: string, poolCount: number, seedingBalanced?: boolean, swapCriteria?: Array<'club' | 'country' | 'league'>) => Promise<void>
   /**
    * Change le statut d'un tireur dans une phase de poules.
    * Si autoStuff=true et que le nouveau statut est 'withdrawal' ou 'excluded',
@@ -360,7 +360,7 @@ export const useStore = create<AppState>((set, get) => ({
     set(s => ({ tournaments: updateTournamentInList(s.tournaments, updated) }))
   },
 
-  allocatePoolPhase: async (tournamentId, contestId, stageId, poolCount, seedingBalanced = true) => {
+  allocatePoolPhase: async (tournamentId, contestId, stageId, poolCount, seedingBalanced = true, swapCriteria) => {
     const { tournaments } = get()
     const t = getTournamentOrThrow(tournaments, tournamentId)
     const contest = getContestOrThrow(t, contestId)
@@ -377,11 +377,35 @@ export const useStore = create<AppState>((set, get) => ({
       : undefined
 
     // For team events, pools contain teams (not individual fencers)
+    // Enforce minTeamSize: teams with fewer present members than minTeamSize are excluded
+    const minTeamSize = contest.minTeamSize ?? 1
     const participants = contest.isTeamEvent
-      ? contest.teams.filter(team => team.present !== false).map(team => ({ id: team.id, initialRank: team.initialRank }))
+      ? contest.teams
+          .filter(team => team.present !== false)
+          .filter(team => {
+            if (!contest.isTeamEvent || minTeamSize <= 1) return true
+            const presentCount = team.fencerIds.filter(fId =>
+              contest.fencers.some(f => f.id === fId && f.present !== false)
+            ).length
+            return presentCount >= minTeamSize
+          })
+          .map(team => ({ id: team.id, initialRank: team.initialRank }))
       : contest.fencers.filter(f => f.present)
 
-    const pools = allocatePools(participants, poolCount, seedOrder, seedingBalanced)
+    let pools = allocatePools(participants, poolCount, seedOrder, seedingBalanced)
+
+    // Apply separation criteria if configured
+    const effectiveCriteria = swapCriteria ?? contest.poolSwapCriteria ?? []
+    if (effectiveCriteria.length > 0 && !contest.isTeamEvent) {
+      const participantInfo = contest.fencers.map(f => ({
+        id: f.id,
+        club: f.club,
+        country: f.country,
+        league: f.league,
+      }))
+      pools = applySeparationCriteria(pools, participantInfo, effectiveCriteria)
+    }
+
     const updated = mutateContest(t, contestId, c => ({
       ...c,
       stages: c.stages.map(s => s.id === stageId && s.type === 'pool'
@@ -633,8 +657,7 @@ export const useStore = create<AppState>((set, get) => ({
     const contest = getContestOrThrow(t, contestId)
     // Seed from last pool phase results, or initial ranking
     const seededFencers = getSeedOrder(contest)
-    const hasThirdPlace = fencedPlaces !== 'none'
-    const bouts = buildBracket(size, seededFencers, hasThirdPlace)
+    const bouts = buildBracket(size, seededFencers, fencedPlaces)
     // Auto-lock rounds where propagateByes already resolved every bout (100% byes, no real match to play)
     const allRounds = Array.from(new Set(bouts.filter(b => !(b.round === 4 && b.boutIndex === 2)).map(b => b.round)))
     const autoLockedRounds = allRounds.filter(r => {
@@ -649,7 +672,7 @@ export const useStore = create<AppState>((set, get) => ({
       size,
       maxScore,
       fencedPlaces,
-      hasThirdPlace,
+      hasThirdPlace: fencedPlaces !== 'none',
       bouts,
       lockedRounds: autoLockedRounds,
     }
@@ -986,28 +1009,35 @@ function advanceBracket(bouts: TableauBout[], boutId: string, scoreA: number, sc
   const resultB: import('../types').MatchResult = scoreB > scoreA ? 'V' : 'D'
   const updated = bouts.map(b => b.id === boutId ? { ...b, scoreA, scoreB, resultA, resultB, winnerId } : b)
 
+  const isMainBout = !bout.bracket
+  const isConsBout = !!bout.bracket?.startsWith('cons-from-')
+
   // Advance winner to next round bout
   const nextRound = Math.floor(bout.round / 2)
-  if (nextRound < 1) return updated
-
   const nextBoutIndex = Math.floor(bout.boutIndex / 2)
   const isSlotA = bout.boutIndex % 2 === 0
-  let result = updated.map(b => {
-    if (b.round === nextRound && b.boutIndex === nextBoutIndex) {
-      return isSlotA
-        ? { ...b, fencerAId: winnerId }
-        : { ...b, fencerBId: winnerId }
-    }
-    return b
-  })
 
-  // Route loser to 3rd place bout if this is a semi-final (round=4, boutIndex 0 or 1)
-  if (bout.round === 4 && (bout.boutIndex === 0 || bout.boutIndex === 1)) {
-    const hasThirdPlace = result.some(b => b.round === 4 && b.boutIndex === 2)
+  let result = updated
+
+  if (nextRound >= 1) {
+    // For main bouts, only advance within main bracket (no bracket field)
+    // For consolation bouts, advance within same consolation bracket
+    result = result.map(b => {
+      if (b.round === nextRound && b.boutIndex === nextBoutIndex && b.bracket === bout.bracket) {
+        return isSlotA
+          ? { ...b, fencerAId: winnerId }
+          : { ...b, fencerBId: winnerId }
+      }
+      return b
+    })
+  }
+
+  // Route loser to 3rd place bout if this is a semi-final (round=4, boutIndex 0 or 1) in MAIN bracket
+  if (isMainBout && bout.round === 4 && (bout.boutIndex === 0 || bout.boutIndex === 1)) {
+    const hasThirdPlace = result.some(b => !b.bracket && b.round === 4 && b.boutIndex === 2)
     if (hasThirdPlace && loserId) {
       result = result.map(b => {
-        if (b.round === 4 && b.boutIndex === 2) {
-          // bout 0 loser → slot A, bout 1 loser → slot B; reset result if rescoring
+        if (!b.bracket && b.round === 4 && b.boutIndex === 2) {
           return bout.boutIndex === 0
             ? { ...b, fencerAId: loserId, winnerId: undefined, scoreA: undefined, scoreB: undefined }
             : { ...b, fencerBId: loserId, winnerId: undefined, scoreA: undefined, scoreB: undefined }
@@ -1015,6 +1045,34 @@ function advanceBracket(bouts: TableauBout[], boutId: string, scoreA: number, sc
         return b
       })
     }
+  }
+
+  // Route loser from main bout (round >= 8) into consolation bracket
+  if (isMainBout && bout.round >= 8 && loserId) {
+    const bracketId = `cons-from-${bout.round}`
+    const consRound = bout.round / 2
+    const consBoutIndex = Math.floor(bout.boutIndex / 2)
+    const consSlotA = bout.boutIndex % 2 === 0
+    result = result.map(b => {
+      if (b.bracket === bracketId && b.round === consRound && b.boutIndex === consBoutIndex) {
+        return consSlotA
+          ? { ...b, fencerAId: loserId }
+          : { ...b, fencerBId: loserId }
+      }
+      return b
+    })
+  }
+
+  // Route loser from consolation semi-final (round=4, boutIndex 0 or 1) to cons 3rd place
+  if (isConsBout && bout.round === 4 && (bout.boutIndex === 0 || bout.boutIndex === 1) && loserId) {
+    result = result.map(b => {
+      if (b.bracket === bout.bracket && b.round === 4 && b.boutIndex === 2) {
+        return bout.boutIndex === 0
+          ? { ...b, fencerAId: loserId, winnerId: undefined, scoreA: undefined, scoreB: undefined }
+          : { ...b, fencerBId: loserId, winnerId: undefined, scoreA: undefined, scoreB: undefined }
+      }
+      return b
+    })
   }
 
   return result

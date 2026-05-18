@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useStore } from '../store'
 import type { TableauPhase, TableauBout } from '../types'
+import { ContestBreadcrumb } from '../components/ContestBreadcrumb'
 
 const WEAPON_LABEL: Record<string, string> = { epee: 'Épée', foil: 'Fleuret', sabre: 'Sabre' }
 const GENDER_LABEL: Record<string, string> = { men: 'Messieurs', women: 'Dames', mixed: 'Mixte' }
@@ -49,8 +50,21 @@ export default function TableauPage() {
   // last locked = smallest round number (most recently locked in T32→T16→... progression)
   const lastLockedRound = lockedRounds.length > 0 ? Math.min(...lockedRounds) : null
 
-  // Compute current active round: first non-locked round with real (non-BYE) bouts
-  const rounds = Array.from(new Set(stage.bouts.map(b => b.round))).sort((a, b) => b - a)
+  // Only main bracket rounds
+  const rounds = Array.from(new Set(stage.bouts.filter(b => !b.bracket).map(b => b.round))).sort((a, b) => b - a)
+
+  // Consolation bracket IDs and their labels
+  const consolationBracketIds = Array.from(new Set(stage.bouts.filter(b => b.bracket?.startsWith('cons-from-')).map(b => b.bracket!)))
+  function consolationLabel(bracketId: string): string {
+    const match = bracketId.match(/cons-from-(\d+)/)
+    if (!match) return bracketId
+    const mainR = parseInt(match[1])
+    if (mainR === 8) return 'Places 5–8'
+    if (mainR === 16) return 'Places 9–16'
+    if (mainR === 32) return 'Places 17–32'
+    if (mainR === 64) return 'Places 33–64'
+    return `Places ${mainR/2+1}–${mainR}`
+  }
   const activeRound = rounds.find(round =>
     !lockedRounds.includes(round) &&
     stage.bouts.some(b => b.round === round && b.fencerAId && b.fencerBId)
@@ -127,7 +141,7 @@ export default function TableauPage() {
         <span>/</span>
         <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>
         <span>/</span>
-        <Link to={`/tournament/${tournamentId}/contest/${contestId}`} className="hover:text-blue-600">{contest.name}</Link>
+        <ContestBreadcrumb tournament={tournament} contest={contest} tournamentId={tournamentId!} />
         <span>/</span>
         <span className="text-gray-800 font-medium">{stage.name}</span>
       </div>
@@ -291,6 +305,106 @@ export default function TableauPage() {
           )
         })}
       </div>
+
+      {/* ─── Consolation brackets (all_places) ─── */}
+      {consolationBracketIds.length > 0 && (
+        <div className="print:hidden space-y-6">
+          <h2 className="text-lg font-bold text-orange-800 border-b border-orange-200 pb-2">Tableaux de consolation</h2>
+          {consolationBracketIds.map(bracketId => {
+            const consBouts = stage.bouts.filter(b => b.bracket === bracketId)
+            const consRounds = Array.from(new Set(consBouts.map(b => b.round))).sort((a, b) => b - a)
+            return (
+              <div key={bracketId} className="space-y-4 border border-orange-100 rounded-lg p-4 bg-orange-50/40">
+                <h3 className="text-base font-semibold text-orange-700">{consolationLabel(bracketId)}</h3>
+                {consRounds.map(consRound => {
+                  const isConsFinale = consRound === 2
+                  const thirdPlace = consBouts.find(b => b.round === 4 && b.boutIndex === 2)
+                  const roundBouts = consBouts
+                    .filter(b => b.round === consRound && !(consRound === 4 && b.boutIndex === 2))
+                    .sort((a, b) => a.boutIndex - b.boutIndex)
+                  const consLabel = isConsFinale ? 'Finale' : consRound === 4 ? 'Demi-finales' : `T${consRound}`
+                  return (
+                    <div key={consRound}>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-orange-600 mb-2">{consLabel}</p>
+                      {isConsFinale && thirdPlace ? (
+                        <div className="space-y-4">
+                          {thirdPlace.fencerAId || thirdPlace.fencerBId ? (
+                            <div>
+                              <p className="text-xs text-orange-500 mb-1">Petite finale</p>
+                              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                <BracketBout key={thirdPlace.id}
+                                  bout={thirdPlace}
+                                  nameA={fencerName(thirdPlace.fencerAId)}
+                                  nameB={fencerName(thirdPlace.fencerBId)}
+                                  maxScore={stage.maxScore}
+                                  isEditing={editingBout === thirdPlace.id}
+                                  scoreAInput={scoreA}
+                                  scoreBInput={scoreB}
+                                  onScoreAChange={setScoreA}
+                                  onScoreBChange={setScoreB}
+                                  onEdit={() => startEdit(thirdPlace)}
+                                  onSave={() => saveBout(thirdPlace.id)}
+                                  onCancel={() => setEditingBout(null)}
+                                  onQuickScore={(sa, sb) => quickSaveBout(thirdPlace.id, sa, sb)}
+                                  roundLocked={stage.status === 'done'}
+                                />
+                              </div>
+                            </div>
+                          ) : null}
+                          <div>
+                            <p className="text-xs text-orange-500 mb-1">Finale</p>
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                              {roundBouts.map(bout => (
+                                <BracketBout key={bout.id}
+                                  bout={bout}
+                                  nameA={fencerName(bout.fencerAId)}
+                                  nameB={fencerName(bout.fencerBId)}
+                                  maxScore={stage.maxScore}
+                                  isEditing={editingBout === bout.id}
+                                  scoreAInput={scoreA}
+                                  scoreBInput={scoreB}
+                                  onScoreAChange={setScoreA}
+                                  onScoreBChange={setScoreB}
+                                  onEdit={() => startEdit(bout)}
+                                  onSave={() => saveBout(bout.id)}
+                                  onCancel={() => setEditingBout(null)}
+                                  onQuickScore={(sa, sb) => quickSaveBout(bout.id, sa, sb)}
+                                  roundLocked={stage.status === 'done'}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                          {roundBouts.map(bout => (
+                            <BracketBout key={bout.id}
+                              bout={bout}
+                              nameA={fencerName(bout.fencerAId)}
+                              nameB={fencerName(bout.fencerBId)}
+                              maxScore={stage.maxScore}
+                              isEditing={editingBout === bout.id}
+                              scoreAInput={scoreA}
+                              scoreBInput={scoreB}
+                              onScoreAChange={setScoreA}
+                              onScoreBChange={setScoreB}
+                              onEdit={() => startEdit(bout)}
+                              onSave={() => saveBout(bout.id)}
+                              onCancel={() => setEditingBout(null)}
+                              onQuickScore={(sa, sb) => quickSaveBout(bout.id, sa, sb)}
+                              roundLocked={stage.status === 'done'}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* ─── PRINT-ONLY: feuilles de match (tableau ouvert) ─── */}
       {stage.status === 'running' && (

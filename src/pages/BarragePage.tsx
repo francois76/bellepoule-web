@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useStore } from '../store'
 import type { BarragePhase } from '../types'
+import { ContestBreadcrumb } from '../components/ContestBreadcrumb'
 
 export default function BarragePage() {
   const { tournamentId, contestId, stageId } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
@@ -70,7 +71,7 @@ export default function BarragePage() {
         <span>/</span>
         <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>
         <span>/</span>
-        <Link to={`/tournament/${tournamentId}/contest/${contestId}`} className="hover:text-blue-600">{contest.name}</Link>
+        <ContestBreadcrumb tournament={tournament} contest={contest} tournamentId={tournamentId!} />
         <span>/</span>
         <span className="text-gray-800 font-medium">{stage.name}</span>
       </div>

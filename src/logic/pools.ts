@@ -141,3 +141,85 @@ export function fieBoutOrder(fencerIds: string[]): PoolBout[] {
   }
   return bouts
 }
+
+// ─── Separation criteria (greedy swap) ──────────────────────────────────────
+
+type ParticipantInfo = { id: string; club?: string; country?: string; league?: string }
+
+/**
+ * Count conflicts in a set of pools for the given criteria.
+ * A conflict occurs when two fencers in the same pool share the same
+ * non-empty value for any criterion (club, country, or league).
+ */
+function countConflicts(pools: Pool[], info: Map<string, ParticipantInfo>, criteria: Array<'club' | 'country' | 'league'>): number {
+  let count = 0
+  for (const pool of pools) {
+    for (const crit of criteria) {
+      const values: string[] = []
+      for (const id of pool.fencerIds) {
+        const v = info.get(id)?.[crit]
+        if (v) values.push(v)
+      }
+      // Count duplicate values (each pair is one conflict)
+      const freq = new Map<string, number>()
+      for (const v of values) freq.set(v, (freq.get(v) ?? 0) + 1)
+      for (const cnt of freq.values()) if (cnt > 1) count += cnt - 1
+    }
+  }
+  return count
+}
+
+/**
+ * Apply separation criteria to an existing pool allocation using a greedy swap algorithm.
+ * Tries to minimise the number of fencers from the same club/country/league in the same pool.
+ *
+ * participants must contain ALL participants (even those not in pools) — used for metadata lookup.
+ */
+export function applySeparationCriteria(
+  pools: Pool[],
+  participants: ParticipantInfo[],
+  criteria: Array<'club' | 'country' | 'league'>,
+): Pool[] {
+  if (!criteria.length || pools.length <= 1) return pools
+
+  const info = new Map<string, ParticipantInfo>(participants.map(p => [p.id, p]))
+  // Deep-copy pool fencer lists (bouts regenerated at end)
+  const result = pools.map(p => ({ ...p, fencerIds: [...p.fencerIds] }))
+
+  let improved = true
+  const MAX_ITER = 500
+  let iter = 0
+  let best = countConflicts(result, info, criteria)
+
+  while (improved && iter < MAX_ITER && best > 0) {
+    improved = false
+    iter++
+    outer:
+    for (let pi = 0; pi < result.length; pi++) {
+      for (let pj = pi + 1; pj < result.length; pj++) {
+        for (let ai = 0; ai < result[pi].fencerIds.length; ai++) {
+          for (let bj = 0; bj < result[pj].fencerIds.length; bj++) {
+            // Try swapping result[pi].fencerIds[ai] with result[pj].fencerIds[bj]
+            const tmp = result[pi].fencerIds[ai]
+            result[pi].fencerIds[ai] = result[pj].fencerIds[bj]
+            result[pj].fencerIds[bj] = tmp
+
+            const newConflicts = countConflicts(result, info, criteria)
+            if (newConflicts < best) {
+              best = newConflicts
+              improved = true
+              if (best === 0) break outer
+            } else {
+              // Revert
+              result[pj].fencerIds[bj] = result[pi].fencerIds[ai]
+              result[pi].fencerIds[ai] = tmp
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Regenerate bouts with the new assignment
+  return result.map(pool => ({ ...pool, bouts: fieBoutOrder(pool.fencerIds) }))
+}

@@ -2,6 +2,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useStore } from '../store'
 import type { PoolPhase, TableauPhase } from '../types'
 import { DEFAULT_DISPLAY_CONFIG } from '../types'
+import { ContestBreadcrumb } from '../components/ContestBreadcrumb'
 
 const WEAPON_LABEL: Record<string, string> = { epee: 'Épée', foil: 'Fleuret', sabre: 'Sabre' }
 const GENDER_LABEL: Record<string, string> = { men: 'Messieurs', women: 'Dames', mixed: 'Mixte' }
@@ -121,7 +122,7 @@ export default function ClassificationPage() {
         <span>/</span>
         <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>
         <span>/</span>
-        <Link to={`/tournament/${tournamentId}/contest/${contestId}`} className="hover:text-blue-600">{contest.name}</Link>
+        <ContestBreadcrumb tournament={tournament} contest={contest} tournamentId={tournamentId!} />
         <span>/</span>
         <span className="text-gray-800 font-medium">Classement</span>
       </div>

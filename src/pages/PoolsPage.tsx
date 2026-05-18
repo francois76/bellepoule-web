@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
+import { ContestBreadcrumb } from '../components/ContestBreadcrumb'
 import { useStore } from '../store'
 import type { PoolPhase, PoolBout, Pool, Referee, FencerPoolStatus } from '../types'
 import { DEFAULT_DISPLAY_CONFIG } from '../types'
@@ -19,6 +20,7 @@ export default function PoolsPage() {
   const [allocateModal, setAllocateModal] = useState(false)
   const [poolCountInput, setPoolCountInput] = useState('')
   const [seedingBalanced, setSeedingBalanced] = useState(true)
+  const [swapCriteria, setSwapCriteria] = useState<Array<'club' | 'country' | 'league'>>(['club'])
   const [showSheets, setShowSheets] = useState(false)
   const [poolSizeInput, setPoolSizeInput] = useState('6')
   const [latecomerModal, setLatecomerModal] = useState(false)
@@ -72,7 +74,7 @@ export default function PoolsPage() {
     e.preventDefault()
     const count = parseInt(poolCountInput)
     if (!count || count < 1) return
-    await allocatePoolPhase(tournamentId!, contestId!, stageId!, count, seedingBalanced)
+    await allocatePoolPhase(tournamentId!, contestId!, stageId!, count, seedingBalanced, swapCriteria)
     setAllocateModal(false)
   }
 
@@ -138,7 +140,7 @@ export default function PoolsPage() {
         <span>/</span>
         <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>
         <span>/</span>
-        <Link to={`/tournament/${tournamentId}/contest/${contestId}`} className="hover:text-blue-600">{contest.name}</Link>
+        <ContestBreadcrumb tournament={tournament} contest={contest} tournamentId={tournamentId!} />
         <span>/</span>
         <span className="text-gray-800 font-medium">{stage.name}</span>
       </div>
@@ -269,6 +271,27 @@ export default function PoolsPage() {
                   </label>
                 </div>
               </div>
+              {!contest.isTeamEvent && (
+                <div>
+                  <label className="label">Séparation</label>
+                  <p className="text-xs text-gray-400 mb-1">Éviter deux tireurs du même dans la même poule</p>
+                  <div className="flex gap-3 flex-wrap mt-1">
+                    {(['club','country','league'] as const).map(crit => {
+                      const labels = { club: 'Club', country: 'Nation', league: 'Ligue' }
+                      return (
+                        <label key={crit} className="flex items-center gap-1.5 cursor-pointer">
+                          <input type="checkbox" className="accent-blue-600"
+                            checked={swapCriteria.includes(crit)}
+                            onChange={e => setSwapCriteria(prev =>
+                              e.target.checked ? [...prev, crit] : prev.filter(c => c !== crit)
+                            )} />
+                          <span className="text-sm text-gray-700">{labels[crit]}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
               <div className="flex gap-2 pt-2">
                 <button type="button" className="btn-secondary flex-1" onClick={() => setAllocateModal(false)}>Annuler</button>
                 <button type="submit" className="btn-primary flex-1">Allouer</button>
@@ -294,13 +317,17 @@ export default function PoolsPage() {
                 📊 Classement
               </button>
             )}
-            {stage.pools.map((p, idx) => (
-              <button key={p.id}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${idx === selectedPool ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300'}`}
-                onClick={() => setSelectedPool(idx)}>
-                Poule {p.number}
-              </button>
-            ))}
+            {stage.pools.map((p, idx) => {
+              const POOL_SUITS = ['♦','♣','♥','♠']
+              const suit = POOL_SUITS[(p.number - 1) % 4]
+              return (
+                <button key={p.id}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${idx === selectedPool ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300'}`}
+                  onClick={() => setSelectedPool(idx)}>
+                  {suit} Poule {p.number}
+                </button>
+              )
+            })}
           </div>
 
           {/* Bout scoring - screen only */}
@@ -346,7 +373,7 @@ export default function PoolsPage() {
             <div className="print:hidden grid gap-5 lg:grid-cols-2">
               {/* Pool composition */}
               <div className="card">
-                <h2 className="font-semibold text-gray-700 mb-3">Poule {pool.number} — {contest.isTeamEvent ? 'Équipes' : 'Tireurs'}</h2>
+                <h2 className="font-semibold text-gray-700 mb-3">{['♦','♣','♥','♠'][(pool.number - 1) % 4]} Poule {pool.number} — {contest.isTeamEvent ? 'Équipes' : 'Tireurs'}</h2>
                 <ol className="space-y-1">
                   {pool.fencerIds.map((fId, idx) => {
                     const fencerStatus: FencerPoolStatus = (stage.fencerStatuses?.[fId] ?? 'ok') as FencerPoolStatus

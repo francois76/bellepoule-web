@@ -25,6 +25,8 @@ const DISPLAY_FIELD_LABELS: Record<string, string> = {
   country:      'Pays',
   licence:      'N° licence',
   initialRank:  'Classement initial',
+  league:       'Ligue',
+  region:       'Région',
 }
 
 export default function TournamentPage() {

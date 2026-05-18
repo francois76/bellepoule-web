@@ -101,7 +101,7 @@ export function importFFF(text: string): Fencer[] {
     if (!personal || personal.length < 4) continue
     const [lastName, firstName, birthDate, gender, country] = personal
     const clubFields = parts[2]?.split(',') ?? []
-    const [licenceNumber, , club, rankStr] = clubFields
+    const [licenceNumber, league, club, rankStr] = clubFields
     const bdp = birthDate?.trim().split('/') ?? []
     const isoBirthDate = bdp.length === 3 ? `${bdp[2]}-${bdp[1].padStart(2, '0')}-${bdp[0].padStart(2, '0')}` : undefined
     fencers.push({
@@ -113,6 +113,7 @@ export function importFFF(text: string): Fencer[] {
       club: club?.trim() || undefined,
       country: country?.trim() || undefined,
       licenceNumber: licenceNumber?.trim() || undefined,
+      league: league?.trim() || undefined,
       initialRank: rankStr ? parseInt(rankStr) || undefined : undefined,
       present: true,
     })
@@ -163,6 +164,8 @@ export function importBellePouleXML(xmlText: string): Partial<Contest> & { fence
       licenceNumber: t.getAttribute('Licence') ?? undefined,
       initialRank: rankAttr ? parseInt(rankAttr) || undefined : undefined,
       present: statut !== 'F',
+      league: t.getAttribute('Ligue') ?? undefined,
+      region: t.getAttribute('Region') ?? undefined,
     })
     // Group by Equipe attribute for team events
     const equipe = t.getAttribute('Equipe')
@@ -276,4 +279,49 @@ function downloadFile(filename: string, mimeType: string, content: string): void
   a.download = filename
   a.click()
   URL.revokeObjectURL(url)
+}
+
+// ─── Export FFF ────────────────────────────────────────────────────────────────
+
+/**
+ * Export a contest's fencer list in FFF (Engarde) format.
+ *
+ * Line format: NOM,Prenom,DD/MM/YYYY,sex,nation;region,ligue;licence,ligue,club,rank,points;
+ * Gender: M → 'M', F → 'F'
+ */
+export function exportContestFFF(contest: Contest, fencers: Fencer[]): void {
+  const now = new Date()
+  const dd = String(now.getDate()).padStart(2, '0')
+  const mm = String(now.getMonth() + 1).padStart(2, '0')
+  const yyyy = now.getFullYear()
+  const dateStr = `${dd}/${mm}/${yyyy}`
+
+  const lines: string[] = ['FFF;UTF8;CLASSEMENT;FFE', dateStr]
+
+  for (const f of fencers) {
+    const dob = f.birthDate
+      ? (() => {
+          const [y, mo, d] = f.birthDate!.split('-')
+          return `${d}/${mo}/${y}`
+        })()
+      : ''
+    const sex = f.gender === 'F' ? 'F' : 'M'
+    const nation = f.country ?? ''
+    const region = ''  // not stored in Fencer
+    const ligue = f.league ?? ''
+    const licence = f.licenceNumber ?? ''
+    const club = f.club ?? ''
+    const rank = f.initialRank != null ? String(f.initialRank) : ''
+    const points = ''  // not stored
+
+    // Format: NOM,Prenom,DD/MM/YYYY,sex,nation;region,ligue;licence,ligue,club,rank,points;
+    const personal = `${f.lastName},${f.firstName},${dob},${sex},${nation}`
+    const regionPart = `${region},${ligue}`
+    const clubPart = `${licence},${ligue},${club},${rank},${points}`
+
+    lines.push(`${personal};${regionPart};${clubPart};`)
+  }
+
+  const contestName = contest.name ?? 'export'
+  downloadFile(`${contestName}.fff`, 'text/plain;charset=utf-8', lines.join('\n'))
 }

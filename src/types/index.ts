@@ -68,6 +68,8 @@ export interface DisplayConfig {
   country:      DisplayFieldConfig
   licence:      DisplayFieldConfig
   initialRank:  DisplayFieldConfig
+  league:       DisplayFieldConfig
+  region:       DisplayFieldConfig
 }
 
 /** Valeurs par défaut (même comportement que l'ancienne application) */
@@ -78,6 +80,8 @@ export const DEFAULT_DISPLAY_CONFIG: DisplayConfig = {
   country:      { visible: false, onCheckin: false, onPool: false, onResults: false },
   licence:      { visible: false, onCheckin: false, onPool: false, onResults: false },
   initialRank:  { visible: true,  onCheckin: true,  onPool: true,  onResults: true  },
+  league:       { visible: false, onCheckin: false, onPool: false, onResults: false },
+  region:       { visible: false, onCheckin: false, onPool: false, onResults: false },
 }
 
 // ─── Fencer ───────────────────────────────────────────────────────────────────
@@ -90,6 +94,8 @@ export interface Fencer {
   gender: 'M' | 'F'
   club?: string
   country?: string
+  league?: string   // ligue (FFF / cotcot Ligue attribute)
+  region?: string   // région (cotcot Region attribute)
   licenceNumber?: string
   initialRank?: number
   present: boolean // checked-in
@@ -104,6 +110,12 @@ export interface Team {
   fencerIds: string[]   // IDs of Fencer entries in this team
   present: boolean      // whether the team is eligible to compete
   initialRank?: number  // seeding rank (sum of N best member initial ranks, lower = better seeded)
+  /**
+   * How the team's initialRank is determined.
+   * - 'auto'   (default): rank is computed from the sum of N best member initial ranks.
+   * - 'manual': rank is explicitly set by the organizer and not auto-recomputed.
+   */
+  rankingMode?: 'auto' | 'manual'
 }
 
 // ─── Referee ──────────────────────────────────────────────────────────────────
@@ -201,6 +213,12 @@ export interface TableauBout {
   id: string
   round: number // e.g. 64 = tableau de 64
   boutIndex: number // position in the round
+  /**
+   * Bracket identifier. Undefined or absent = main bracket.
+   * 'cons-from-{R}' = consolation bracket fed by losers of main round R.
+   * Only present when fencedPlaces === 'all_places'.
+   */
+  bracket?: string
   fencerAId?: string
   fencerBId?: string
   scoreA?: number
@@ -291,6 +309,20 @@ export interface Contest {
    * Par défaut : true (comportement de l'ancienne application).
    */
   autoScoreStuffing?: boolean
+
+  /**
+   * Critères de séparation lors de la répartition des poules.
+   * Liste d'attributs sur lesquels on essaie de ne pas mettre deux tireurs
+   * identiques dans la même poule : 'club', 'country', 'league'.
+   * Par défaut : [] (pas de séparation forcée).
+   */
+  poolSwapCriteria?: Array<'club' | 'country' | 'league'>
+
+  /**
+   * Couleur d'identification de la compétition (hex, ex : '#1e3a5f').
+   * Utilisée pour colorier le fil d'ariane quand on navigue dans cette compétition.
+   */
+  color?: string
 
   /**
    * Configuration de l'affichage des données dans l'application et les impressions.

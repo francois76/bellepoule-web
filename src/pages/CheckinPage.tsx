@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useStore } from '../store'
 import { importFFF, importBellePouleXML, readFileText } from '../logic/importExport'
 import type { Fencer, Team } from '../types'
+import { ContestBreadcrumb } from '../components/ContestBreadcrumb'
 import { DEFAULT_DISPLAY_CONFIG } from '../types'
 
 const DEV_LAST_NAMES = ['Martin','Bernard','Dubois','Thomas','Robert','Richard','Petit','Durand','Leroy','Moreau','Simon','Laurent','Lefebvre','Michel','Garcia','David','Bertrand','Roux','Vincent','Fournier','Morel','Girard','Andre','Lefevre','Mercier','Dupont','Lambert','Bonnet','François','Martinez']
@@ -10,7 +11,7 @@ const DEV_FIRST_NAMES = ['Hugo','Lucas','Léo','Louis','Gabriel','Noah','Raphaë
 const DEV_CLUBS = ['CSM Clamart','Châlons','Rodez','Paris UC','Grenoble Escrime','Bordeaux EC','Toulouse Escrime','Lyon AE','Nantes EC','Rennes EA']
 
 const EMPTY_FENCER_FORM = { lastName: '', firstName: '', gender: 'M' as 'M' | 'F', club: '', birthDate: '', licenceNumber: '', initialRank: '' }
-const EMPTY_TEAM_FORM = { name: '', club: '', initialRank: '', fencerIds: [] as string[] }
+const EMPTY_TEAM_FORM = { name: '', club: '', initialRank: '', fencerIds: [] as string[], rankingMode: 'auto' as 'auto' | 'manual' }
 
 export default function CheckinPage() {
   const { tournamentId, contestId } = useParams<{ tournamentId: string; contestId: string }>()
@@ -201,6 +202,7 @@ export default function CheckinPage() {
       club: team.club ?? '',
       initialRank: team.initialRank?.toString() ?? '',
       fencerIds: [...team.fencerIds],
+      rankingMode: team.rankingMode ?? 'auto',
     })
   }
 
@@ -211,7 +213,19 @@ export default function CheckinPage() {
       ...team,
       name: editTeamForm.name.trim(),
       club: editTeamForm.club.trim() || undefined,
-      initialRank: editTeamForm.initialRank ? parseInt(editTeamForm.initialRank) : undefined,
+      rankingMode: editTeamForm.rankingMode,
+      initialRank: editTeamForm.rankingMode === 'manual' && editTeamForm.initialRank
+        ? parseInt(editTeamForm.initialRank)
+        : editTeamForm.rankingMode === 'auto'
+          ? (() => {
+              const memberRanks = editTeamForm.fencerIds
+                .map(id => contest!.fencers.find(f => f.id === id)?.initialRank ?? 99999)
+                .sort((a, b) => a - b)
+              const n = Math.min(3, memberRanks.length)
+              const sum = memberRanks.slice(0, n).reduce((s, r) => s + r, 0)
+              return n > 0 && sum < 99999 * n ? sum : undefined
+            })()
+          : undefined,
       fencerIds: editTeamForm.fencerIds,
     }).then(() => setEditingTeamId(null))
   }
@@ -327,6 +341,7 @@ export default function CheckinPage() {
               <th>#</th><th>Nom</th><th>Prénom</th>
               {contest.isTeamEvent && <th>Équipe</th>}
               {displayConfig.club.onCheckin && <th>Club</th>}
+              {displayConfig.league?.onCheckin && <th>Ligue</th>}
               {displayConfig.licence.onCheckin && <th>Licence</th>}
               {displayConfig.dateOfBirth.onCheckin && <th>Né(e) le</th>}
               {displayConfig.initialRank.onCheckin && <th>Rang</th>}
@@ -343,6 +358,7 @@ export default function CheckinPage() {
                   <td>{f.firstName}</td>
                   {contest.isTeamEvent && <td>{team?.name ?? '—'}</td>}
                   {displayConfig.club.onCheckin && <td>{f.club ?? '—'}</td>}
+                  {displayConfig.league?.onCheckin && <td>{f.league ?? '—'}</td>}
                   {displayConfig.licence.onCheckin && <td>{f.licenceNumber ?? '—'}</td>}
                   {displayConfig.dateOfBirth.onCheckin && <td>{f.birthDate ? new Date(f.birthDate).toLocaleDateString('fr-FR') : '—'}</td>}
                   {displayConfig.initialRank.onCheckin && <td>{f.initialRank ?? '—'}</td>}
@@ -362,7 +378,7 @@ export default function CheckinPage() {
           <span>/</span>
           <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>
           <span>/</span>
-          <Link to={`/tournament/${tournamentId}/contest/${contestId}`} className="hover:text-blue-600">{contest.name}</Link>
+          <ContestBreadcrumb tournament={tournament} contest={contest} tournamentId={tournamentId!} />
           <span>/</span>
           <span className="text-gray-800 font-medium">Checkin</span>
         </div>
@@ -462,8 +478,26 @@ export default function CheckinPage() {
                                     <input className="input" value={editTeamForm.club} onChange={e => setEditTeamForm(f => ({ ...f, club: e.target.value }))} />
                                   </div>
                                   <div>
-                                    <label className="label">Rang initial</label>
-                                    <input type="number" className="input" value={editTeamForm.initialRank} onChange={e => setEditTeamForm(f => ({ ...f, initialRank: e.target.value }))} />
+                                    <label className="label">Classement</label>
+                                    <div className="flex gap-3 mt-1">
+                                      <label className="flex items-center gap-1.5 cursor-pointer">
+                                        <input type="radio" name="rankingMode" className="accent-blue-600"
+                                          checked={editTeamForm.rankingMode === 'auto'}
+                                          onChange={() => setEditTeamForm(f => ({ ...f, rankingMode: 'auto' }))} />
+                                        <span className="text-sm text-gray-700">Auto</span>
+                                      </label>
+                                      <label className="flex items-center gap-1.5 cursor-pointer">
+                                        <input type="radio" name="rankingMode" className="accent-blue-600"
+                                          checked={editTeamForm.rankingMode === 'manual'}
+                                          onChange={() => setEditTeamForm(f => ({ ...f, rankingMode: 'manual' }))} />
+                                        <span className="text-sm text-gray-700">Manuel</span>
+                                      </label>
+                                    </div>
+                                    {editTeamForm.rankingMode === 'manual' && (
+                                      <input type="number" className="input mt-1" value={editTeamForm.initialRank}
+                                        onChange={e => setEditTeamForm(f => ({ ...f, initialRank: e.target.value }))}
+                                        placeholder="Rang" />
+                                    )}
                                   </div>
                                   <TeamMemberPicker
                                     fencerIds={editTeamForm.fencerIds}

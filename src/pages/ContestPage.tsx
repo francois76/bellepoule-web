@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useStore } from '../store'
-import { exportTournamentJSON } from '../logic/importExport'
+import { exportTournamentJSON, exportContestFFF } from '../logic/importExport'
 import type { TableauSize, PoolPhase, FencedPlaces, DisplayConfig, DisplayFieldConfig } from '../types'
 import { DEFAULT_DISPLAY_CONFIG, FENCING_CATEGORIES } from '../types'
+import { ContestBreadcrumb } from '../components/ContestBreadcrumb'
 
 const stageLabel: Record<string, string> = {
   checkin: 'Checkin',
@@ -40,6 +41,8 @@ const DISPLAY_FIELD_LABELS: Record<keyof DisplayConfig, string> = {
   country:      'Pays',
   licence:      'N° licence',
   initialRank:  'Classement initial',
+  league:       'Ligue',
+  region:       'Région',
 }
 
 /** Score max suggéré selon la catégorie d'âge (règlement fédéral jeunes) */
@@ -189,7 +192,7 @@ export default function ContestPage() {
         <span>/</span>
         <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>
         <span>/</span>
-        <span className="text-gray-800 font-medium">{contest.name}</span>
+        <ContestBreadcrumb tournament={tournament} contest={contest} tournamentId={tournamentId!} />
       </div>
 
       <div className="flex items-start justify-between flex-wrap gap-2">
@@ -212,6 +215,11 @@ export default function ContestPage() {
           <button className="btn-secondary" onClick={() => exportTournamentJSON(tournament)}>
             💾 Exporter
           </button>
+          {!contest.isTeamEvent && (
+            <button className="btn-secondary" onClick={() => exportContestFFF(contest, contest.fencers)}>
+              📋 Exporter FFF
+            </button>
+          )}
         </div>
       </div>
 
