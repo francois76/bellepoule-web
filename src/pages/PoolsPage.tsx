@@ -662,55 +662,60 @@ function PoolScoreSheet({ pool, stage, participantMap, contest, tournament, refe
           )}
         </div>
         <div className="pool-sheet-meta-right">
-          {pool.piste && <span>Piste {pool.piste}</span>}
-          <span className="pool-sheet-referee">Arbitre : <span className="pool-sheet-referee-name">{refName || '________________________'}</span></span>
+          <span className="pool-sheet-referee">Piste : <span className="pool-sheet-referee-name">{pool.piste || '____'}</span></span>
         </div>
       </div>
 
-      {/* Ligne du haut : liste des tireurs (gauche) + signatures (droite) */}
-      <div className="pool-sheet-top">
-        <table className="pool-fencer-list">
+      {/* Grille de report des scores avec colonne signature */}
+      <div className="pool-grid-scroll">
+        <table className="pool-grid pool-grid--open">
           <thead>
             <tr>
               <th>N°</th>
-              <th>{contest.isTeamEvent ? 'Équipe' : 'Tireur'}</th>
-              <th>Détails</th>
+              <th className="pg-name">{contest.isTeamEvent ? 'Équipe' : 'Tireur'}</th>
+              {fencers.map(f => <th key={f.id}>{f.num}</th>)}
+              <th>V</th>
+              <th>M</th>
+              <th>TD</th>
+              <th>TR</th>
+              <th>Ind.</th>
+              <th>Rang</th>
+              <th className="pg-sig">Signature</th>
             </tr>
           </thead>
           <tbody>
-            {fencers.map(f => (
-              <tr key={f.id}>
-                <td className="pfl-num">{f.num}</td>
-                <td className="pfl-name">{f.name}</td>
-                <td className="pfl-club">{f.info}</td>
+            <tr className="pg-arb-row">
+              <td colSpan={2} style={{ textAlign: 'left', fontWeight: 700 }}>
+                Arbitre{refName ? <> — {refName}</> : ''}
+              </td>
+              <td colSpan={fencers.length + 6}></td>
+              <td className="pg-sig"></td>
+            </tr>
+            {fencers.map((rowF, rowIdx) => (
+              <tr key={rowF.id}>
+                <td>{rowF.num}</td>
+                <td className="pg-name" style={{ textAlign: 'left' }}>
+                  {rowF.name}{rowF.info ? ` (${rowF.info})` : ''}
+                </td>
+                {fencers.map((colF, colIdx) => (
+                  rowIdx === colIdx
+                    ? <td key={colF.id} className="pg-x">&nbsp;</td>
+                    : <td key={colF.id}>&nbsp;</td>
+                ))}
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td className="pg-sig"></td>
               </tr>
             ))}
           </tbody>
         </table>
-
-        <div className="pool-sheet-signatures">
-          <p className="pool-sheet-signatures-title">Signatures des tireurs et de l’arbitre :</p>
-          <table>
-            <tbody>
-              <tr className="sig-ref">
-                <td className="sig-num">Arb.</td>
-                <td className="sig-name">{refName || '________________________'}</td>
-                <td className="sig-line"></td>
-              </tr>
-              {fencers.map(f => (
-                <tr key={f.id}>
-                  <td className="sig-num">{f.num}</td>
-                  <td className="sig-name">{f.name}</td>
-                  <td className="sig-line"></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </div>
 
-      {/* Liste des matchs */}
-      <table className="pool-bout-list">
+      <table className="pool-bout-list" style={{ marginTop: '8px' }}>
         <thead>
           <tr>
             <th className="pbl-num">Match</th>

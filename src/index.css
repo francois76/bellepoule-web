@@ -63,6 +63,30 @@ body {
   min-width: 26px;
 }
 
+/* ── Poule ouverte : grille plus petite + colonne signature */
+.pool-grid--open {
+  font-size: 8px;
+  margin-top: 0;
+}
+.pool-grid--open th,
+.pool-grid--open td {
+  padding: 2px 3px;
+  min-width: 18px;
+}
+.pool-grid--open .pg-name {
+  min-width: 110px;
+}
+.pool-grid--open .pg-x {
+  min-width: 18px;
+}
+.pool-grid--open .pg-sig {
+  min-width: 60px;
+  width: 60px;
+}
+.pool-grid--open .pg-arb-row td {
+  background: #f0f0f0;
+}
+
 /* ── Pool sheet global ─────────────────────────────────────── */
 .pool-sheet {
   padding: 6px 0;
