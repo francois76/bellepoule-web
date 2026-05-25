@@ -316,7 +316,7 @@ export interface Contest {
    * identiques dans la même poule : 'club', 'country', 'league'.
    * Par défaut : [] (pas de séparation forcée).
    */
-  poolSwapCriteria?: Array<'club' | 'country' | 'league'>
+  poolSwapCriteria?: ('club' | 'country' | 'league')[]
 
   /**
    * Couleur d'identification de la compétition (hex, ex : '#1e3a5f').

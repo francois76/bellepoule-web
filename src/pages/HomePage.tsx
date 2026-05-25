@@ -54,12 +54,12 @@ export default function HomePage() {
         <form onSubmit={handleCreate} className="card space-y-3">
           <h2 className="font-semibold text-gray-700">Nouveau tournoi</h2>
           <div>
-            <label className="label">Nom *</label>
-            <input className="input" value={name} onChange={e => setName(e.target.value)} placeholder="Coupe de France 2026" autoFocus />
+            <label className="label" htmlFor="new-tournament-name">Nom *</label>
+            <input id="new-tournament-name" className="input" value={name} onChange={e => setName(e.target.value)} placeholder="Coupe de France 2026" />
           </div>
           <div>
-            <label className="label">Organisateur</label>
-            <input className="input" value={organizer} onChange={e => setOrganizer(e.target.value)} placeholder="Club d'escrime de Paris" />
+            <label className="label" htmlFor="new-tournament-organizer">Organisateur</label>
+            <input id="new-tournament-organizer" className="input" value={organizer} onChange={e => setOrganizer(e.target.value)} placeholder="Club d'escrime de Paris" />
           </div>
           <div className="flex gap-2 justify-end">
             <button type="button" className="btn-secondary" onClick={() => setCreating(false)}>Annuler</button>
@@ -78,7 +78,10 @@ export default function HomePage() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {tournaments.map(t => (
             <div key={t.id} className="card hover:shadow-md transition-shadow cursor-pointer group"
-              onClick={() => navigate(`/tournament/${t.id}`)}>
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate(`/tournament/${t.id}`)}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') navigate(`/tournament/${t.id}`) }}>
               <div className="flex items-start justify-between">
                 <div>
                   <h3 className="font-semibold text-gray-800 group-hover:text-blue-700">{t.name}</h3>

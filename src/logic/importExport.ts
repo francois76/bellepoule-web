@@ -51,7 +51,7 @@ export function importTournamentJSON(file: File): Promise<Tournament> {
     const reader = new FileReader()
     reader.onload = e => {
       try {
-        const t = JSON.parse(e.target!.result as string) as Tournament
+        const t = JSON.parse((e.target as FileReader).result as string) as Tournament
         // Assign fresh id to avoid collision
         const imported: Tournament = { ...t, id: nanoid(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
         resolve(imported)
@@ -301,7 +301,7 @@ export function exportContestFFF(contest: Contest, fencers: Fencer[]): void {
   for (const f of fencers) {
     const dob = f.birthDate
       ? (() => {
-          const [y, mo, d] = f.birthDate!.split('-')
+          const [y, mo, d] = (f.birthDate as string).split('-')
           return `${d}/${mo}/${y}`
         })()
       : ''

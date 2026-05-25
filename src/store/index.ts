@@ -41,7 +41,7 @@ interface AppState {
   // Stages
   addPoolPhase: (tournamentId: string, contestId: string, name: string, maxScore: number, promotionPercent: number) => Promise<void>
   removeStage: (tournamentId: string, contestId: string, stageId: string) => Promise<void>
-  allocatePoolPhase: (tournamentId: string, contestId: string, stageId: string, poolCount: number, seedingBalanced?: boolean, swapCriteria?: Array<'club' | 'country' | 'league'>) => Promise<void>
+  allocatePoolPhase: (tournamentId: string, contestId: string, stageId: string, poolCount: number, seedingBalanced?: boolean, swapCriteria?: ('club' | 'country' | 'league')[]) => Promise<void>
   /**
    * Change le statut d'un tireur dans une phase de poules.
    * Si autoStuff=true et que le nouveau statut est 'withdrawal' ou 'excluded',

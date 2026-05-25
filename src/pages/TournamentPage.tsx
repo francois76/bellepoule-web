@@ -31,7 +31,7 @@ const DISPLAY_FIELD_LABELS: Record<string, string> = {
 }
 
 export default function TournamentPage() {
-  const { tournamentId } = useParams<{ tournamentId: string }>()
+  const { tournamentId = '' } = useParams<{ tournamentId: string }>()
   const { tournaments, addContest, removeContest, addFencer, addReferee, addTeam, addPoolPhase } = useStore()
   const navigate = useNavigate()
   const tournament = tournaments.find(t => t.id === tournamentId)
@@ -64,7 +64,7 @@ export default function TournamentPage() {
       } else {
         partial = importBellePouleXML(text)
       }
-      const contest = await addContest(tournamentId!, {
+      const contest = await addContest(tournamentId, {
         name: partial.name ?? 'Compétition importée',
         weapon: partial.weapon ?? 'epee',
         gender: partial.gender ?? 'men',
@@ -75,15 +75,15 @@ export default function TournamentPage() {
         displayConfig: DEFAULT_DISPLAY_CONFIG,
       })
       for (const f of partial.fencers ?? []) {
-        await addFencer(tournamentId!, contest.id, f)
+        await addFencer(tournamentId, contest.id, f)
       }
       // Import teams (team events)
       for (const team of (partial.teams ?? [])) {
-        await addTeam(tournamentId!, contest.id, team)
+        await addTeam(tournamentId, contest.id, team)
       }
       // Import referees (cotcot)
       for (const ref of (partial.referees ?? [])) {
-        await addReferee(tournamentId!, contest.id, ref)
+        await addReferee(tournamentId, contest.id, ref)
       }
       // For cotcot files, also create the declared phases
       if (file.name.endsWith('.cotcot')) {
@@ -92,7 +92,7 @@ export default function TournamentPage() {
         for (const cfg of phaseConfigs) {
           if (cfg.type === 'pool') {
             poolCount++
-            await addPoolPhase(tournamentId!, contest.id, `Tour de poules ${poolCount}`, cfg.maxScore, cfg.promotionPercent ?? 75)
+            await addPoolPhase(tournamentId, contest.id, `Tour de poules ${poolCount}`, cfg.maxScore, cfg.promotionPercent ?? 75)
           }
           // Tableau phases are not added here — size depends on pool results, will be auto-suggested later
         }
@@ -110,7 +110,7 @@ export default function TournamentPage() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     if (!form.name.trim()) return
-    const contest = await addContest(tournamentId!, {
+    const contest = await addContest(tournamentId, {
       ...form,
       name: form.name.trim(),
       category: form.category.trim() || undefined,
@@ -153,24 +153,24 @@ export default function TournamentPage() {
           <h2 className="font-semibold text-gray-700">Nouvelle compétition</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="sm:col-span-2">
-              <label className="label">Nom *</label>
-              <input className="input" value={form.name} onChange={e => set('name', e.target.value)} placeholder="Épée Messieurs Senior" autoFocus />
+              <label className="label" htmlFor="contest-form-name">Nom *</label>
+              <input id="contest-form-name" className="input" value={form.name} onChange={e => set('name', e.target.value)} placeholder="Épée Messieurs Senior" />
             </div>
             <div>
-              <label className="label">Arme</label>
-              <select className="input" value={form.weapon} onChange={e => set('weapon', e.target.value as Contest['weapon'])}>
+              <label className="label" htmlFor="contest-form-weapon">Arme</label>
+              <select id="contest-form-weapon" className="input" value={form.weapon} onChange={e => set('weapon', e.target.value as Contest['weapon'])}>
                 {WEAPONS.map(w => <option key={w.value} value={w.value}>{w.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="label">Genre</label>
-              <select className="input" value={form.gender} onChange={e => set('gender', e.target.value as Contest['gender'])}>
+              <label className="label" htmlFor="contest-form-gender">Genre</label>
+              <select id="contest-form-gender" className="input" value={form.gender} onChange={e => set('gender', e.target.value as Contest['gender'])}>
                 {GENDERS.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="label">Catégorie</label>
-              <select className="input" value={form.category} onChange={e => set('category', e.target.value)}>
+              <label className="label" htmlFor="contest-form-category">Catégorie</label>
+              <select id="contest-form-category" className="input" value={form.category} onChange={e => set('category', e.target.value)}>
                 {FENCING_CATEGORIES.map(cat => (
                   <option key={cat.value} value={cat.value}>{cat.label}</option>
                 ))}
@@ -182,16 +182,16 @@ export default function TournamentPage() {
               )}
             </div>
             <div>
-              <label className="label">Organisateur</label>
-              <input className="input" value={form.organizer} onChange={e => set('organizer', e.target.value)} placeholder={tournament.organizer ?? ''} />
+              <label className="label" htmlFor="contest-form-organizer">Organisateur</label>
+              <input id="contest-form-organizer" className="input" value={form.organizer} onChange={e => set('organizer', e.target.value)} placeholder={tournament.organizer ?? ''} />
             </div>
             <div>
-              <label className="label">Lieu</label>
-              <input className="input" value={form.location} onChange={e => set('location', e.target.value)} placeholder="Salle des fêtes…" />
+              <label className="label" htmlFor="contest-form-location">Lieu</label>
+              <input id="contest-form-location" className="input" value={form.location} onChange={e => set('location', e.target.value)} placeholder="Salle des fêtes…" />
             </div>
             <div>
-              <label className="label">Date</label>
-              <input type="date" className="input" value={form.date} onChange={e => set('date', e.target.value)} />
+              <label className="label" htmlFor="contest-form-date">Date</label>
+              <input id="contest-form-date" type="date" className="input" value={form.date} onChange={e => set('date', e.target.value)} />
             </div>
             <div className="flex items-center gap-2 pt-2">
               <input type="checkbox" id="team" checked={form.isTeamEvent} onChange={e => set('isTeamEvent', e.target.checked)} className="w-4 h-4" />
@@ -199,8 +199,8 @@ export default function TournamentPage() {
             </div>
             {form.isTeamEvent && (
               <div>
-                <label className="label">Taille minimale d'équipe</label>
-                <input type="number" className="input" min="1" max="10" value={form.minTeamSize}
+                <label className="label" htmlFor="contest-form-min-team-size">Taille minimale d'équipe</label>
+                <input id="contest-form-min-team-size" type="number" className="input" min="1" max="10" value={form.minTeamSize}
                   onChange={e => set('minTeamSize', e.target.value)} />
                 <p className="text-xs text-gray-400 mt-1">
                   Une équipe avec moins de {form.minTeamSize || '?'} membres présents ne peut pas être déclarée présente.
@@ -210,7 +210,7 @@ export default function TournamentPage() {
           </div>
 
           <div className="space-y-3 border-t border-gray-100 pt-4">
-            <h3 className="font-semibold text-gray-700 text-sm">Champs activés (obligatoires)</h3>
+              <label className="btn-secondary cursor-pointer" htmlFor="contest-form-label-section">Champs activés (obligatoires)</label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {(Object.keys(form.displayConfig) as (keyof typeof form.displayConfig)[]).map(field => (
                 <label key={field} className="flex items-center gap-2 group cursor-pointer text-sm">
@@ -245,7 +245,10 @@ export default function TournamentPage() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {tournament.contests.map(c => (
             <div key={c.id} className="card hover:shadow-md transition-shadow cursor-pointer group"
-              onClick={() => navigate(`/tournament/${tournamentId}/contest/${c.id}`)}>
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate(`/tournament/${tournamentId}/contest/${c.id}`)}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') navigate(`/tournament/${tournamentId}/contest/${c.id}`) }}>
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2">
@@ -264,7 +267,7 @@ export default function TournamentPage() {
                   </p>
                 </div>
                 <button className="text-gray-300 hover:text-red-500 transition-colors p-1"
-                  onClick={e => { e.stopPropagation(); if (confirm('Supprimer cette compétition ?')) removeContest(tournamentId!, c.id) }}
+                  onClick={e => { e.stopPropagation(); if (confirm('Supprimer cette compétition ?')) removeContest(tournamentId, c.id) }}
                   title="Supprimer">✕</button>
               </div>
             </div>

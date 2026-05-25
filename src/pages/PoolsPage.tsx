@@ -51,7 +51,7 @@ function computePoolLiveStats(pool: Pool, maxScore: number) {
 }
 
 export default function PoolsPage() {
-  const { tournamentId, contestId, stageId } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
+  const { tournamentId = '', contestId = '', stageId = '' } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
   const { tournaments, allocatePoolPhase, setPoolBoutScore, setPoolBoutAbsent, lockPoolPhase, unlockPoolPhase, fillRandomPoolBouts, setPoolFencerStatus, addLatecomer } = useStore()
   const tournament = tournaments.find(t => t.id === tournamentId)
   const contest = tournament?.contests.find(c => c.id === contestId)
@@ -64,7 +64,7 @@ export default function PoolsPage() {
   const [allocateModal, setAllocateModal] = useState(false)
   const [poolCountInput, setPoolCountInput] = useState('')
   const [seedingBalanced, setSeedingBalanced] = useState(true)
-  const [swapCriteria, setSwapCriteria] = useState<Array<'club' | 'country' | 'league'>>(['club'])
+  const [swapCriteria, setSwapCriteria] = useState<('club' | 'country' | 'league')[]>(['club'])
   const [poolSizeInput, setPoolSizeInput] = useState('6')
   const [latecomerModal, setLatecomerModal] = useState(false)
   const [latecomerFencerId, setLatecomerFencerId] = useState('')
@@ -96,19 +96,20 @@ export default function PoolsPage() {
     : contest.fencers.filter(f => !allocatedIds.has(f.id))
 
   function openAllocateModal() {
+    if (!contest) return
     const defaultCount = Math.ceil(presentCount / 6)
     setPoolCountInput(String(defaultCount))
     setPoolSizeInput(String(Math.round(presentCount / defaultCount)))
     // Default to balanced for first round, non-balanced (par force) if a previous pool round exists
-    const stageIdx = contest!.stages.findIndex(s => s.id === stageId)
-    const hasPrevPool = contest!.stages.slice(0, stageIdx).some(s => s.type === 'pool' && s.status === 'done')
+    const stageIdx = contest.stages.findIndex(s => s.id === stageId)
+    const hasPrevPool = contest.stages.slice(0, stageIdx).some(s => s.type === 'pool' && s.status === 'done')
     setSeedingBalanced(!hasPrevPool)
     setAllocateModal(true)
   }
 
   async function handleAddLatecomer() {
     if (!latecomerFencerId) return
-    await addLatecomer(tournamentId!, contestId!, stageId!, latecomerFencerId)
+    await addLatecomer(tournamentId, contestId, stageId, latecomerFencerId)
     setLatecomerModal(false)
     setLatecomerFencerId('')
   }
@@ -117,7 +118,7 @@ export default function PoolsPage() {
     e.preventDefault()
     const count = parseInt(poolCountInput)
     if (!count || count < 1) return
-    await allocatePoolPhase(tournamentId!, contestId!, stageId!, count, seedingBalanced, swapCriteria)
+    await allocatePoolPhase(tournamentId, contestId, stageId, count, seedingBalanced, swapCriteria)
     setAllocateModal(false)
   }
 
@@ -128,7 +129,7 @@ export default function PoolsPage() {
     if (isNaN(sa) || isNaN(sb)) return
     if (sa > stage.maxScore || sb > stage.maxScore) return
     if (sa === sb) return
-    await setPoolBoutScore(tournamentId!, contestId!, stageId!, pool.id, boutId, sa, sb)
+    await setPoolBoutScore(tournamentId, contestId, stageId, pool.id, boutId, sa, sb)
     setEditingBout(null)
     setScoreA('')
     setScoreB('')
@@ -136,7 +137,7 @@ export default function PoolsPage() {
 
   async function quickSaveBout(boutId: string, sa: number, sb: number) {
     if (!stage) return
-    await setPoolBoutScore(tournamentId!, contestId!, stageId!, pool.id, boutId, sa, sb)
+    await setPoolBoutScore(tournamentId, contestId, stageId, pool.id, boutId, sa, sb)
     setEditingBout(null)
     setScoreA('')
     setScoreB('')
@@ -166,12 +167,12 @@ export default function PoolsPage() {
       {/* Status dropdown menu — fixed positioning to avoid clip */}
       {statusMenuId && statusMenuPos && (
         <>
-          <div className="fixed inset-0 z-[9998]" onClick={() => { setStatusMenuId(null); setStatusMenuPos(null) }} />
+          <div className="fixed inset-0 z-[9998]" role="button" tabIndex={-1} aria-label="Fermer" onClick={() => { setStatusMenuId(null); setStatusMenuPos(null) }} onKeyDown={e => { if (e.key === 'Escape') { setStatusMenuId(null); setStatusMenuPos(null) } }} />
           <div className="fixed z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-max"
             style={{ top: statusMenuPos.top, right: statusMenuPos.right }}>
             {([['ok','✓ Présent(e)','text-green-700'],['withdrawal','🚑 Forfait','text-orange-700'],['excluded','⛔ Exclu(e)','text-red-700']] as [FencerPoolStatus, string, string][]).map(([s,label,cls]) => (
               <button key={s} className={`block w-full text-left px-3 py-1.5 text-sm ${cls} hover:bg-gray-50`}
-                onClick={() => { setPoolFencerStatus(tournamentId!, contestId!, stageId!, statusMenuId, s, contest.autoScoreStuffing ?? true); setStatusMenuId(null); setStatusMenuPos(null) }}>
+                onClick={() => { setPoolFencerStatus(tournamentId, contestId, stageId, statusMenuId, s, contest.autoScoreStuffing ?? true); setStatusMenuId(null); setStatusMenuPos(null) }}>
                 {label}
               </button>
             ))}
@@ -188,7 +189,7 @@ export default function PoolsPage() {
         <span>/</span>
         <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>
         <span>/</span>
-        <ContestBreadcrumb tournament={tournament} contest={contest} tournamentId={tournamentId!} />
+        <ContestBreadcrumb tournament={tournament} contest={contest} tournamentId={tournamentId} />
         <span>/</span>
         <span className="text-gray-800 font-medium">{stage.name}</span>
       </div>
@@ -208,7 +209,7 @@ export default function PoolsPage() {
           )}
           {stage.status === 'running' && (
             <button className="btn-primary bg-green-600 hover:bg-green-700"
-              onClick={() => lockPoolPhase(tournamentId!, contestId!, stageId!)}>
+              onClick={() => lockPoolPhase(tournamentId, contestId, stageId)}>
               ✅ Terminer le tour
             </button>
           )}
@@ -220,7 +221,7 @@ export default function PoolsPage() {
           )}
           {stage.pools.length > 0 && stage.status === 'running' && import.meta.env.DEV && (
             <button className="btn-secondary border-orange-300 text-orange-700 hover:bg-orange-50"
-              onClick={() => fillRandomPoolBouts(tournamentId!, contestId!, stageId!)}>
+              onClick={() => fillRandomPoolBouts(tournamentId, contestId, stageId)}>
               🎲 Scores aléatoires
             </button>
           )}
@@ -231,7 +232,7 @@ export default function PoolsPage() {
           )}
           {stage.status === 'done' && !hasLaterStageStarted && (
             <button className="btn-secondary"
-              onClick={() => unlockPoolPhase(tournamentId!, contestId!, stageId!)}>
+              onClick={() => unlockPoolPhase(tournamentId, contestId, stageId)}>
               🔓 Rouvrir pour correction
             </button>
           )}
@@ -248,8 +249,8 @@ export default function PoolsPage() {
               Les assauts déjà joués sans lui seront marqués comme <em>absences</em> (ses adversaires passés reçoivent victoire + score max).
             </p>
             <div>
-              <label className="label">Tireur retardataire</label>
-              <select className="input" value={latecomerFencerId} onChange={e => setLatecomerFencerId(e.target.value)}>
+              <label className="label" htmlFor="latecomer-fencer-select">Tireur retardataire</label>
+              <select id="latecomer-fencer-select" className="input" value={latecomerFencerId} onChange={e => setLatecomerFencerId(e.target.value)}>
                 <option value="">— Sélectionner —</option>
                 {eligibleLatecomers.map(p => (
                   <option key={p.id} value={p.id}>
@@ -275,19 +276,19 @@ export default function PoolsPage() {
             <form onSubmit={handleAllocate} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="label">Nombre de poules</label>
-                  <input className="input" type="number" min={1} max={presentCount}
+                  <label className="label" htmlFor="pool-count-input">Nombre de poules</label>
+                  <input id="pool-count-input" className="input" type="number" min={1} max={presentCount}
                     value={poolCountInput}
                     onChange={e => {
                       setPoolCountInput(e.target.value)
                       const cnt = parseInt(e.target.value)
                       if (cnt > 0) setPoolSizeInput(String(Math.round(presentCount / cnt)))
                     }}
-                    required autoFocus />
+                    required />
                 </div>
                 <div>
-                  <label className="label">Taille cible</label>
-                  <input className="input" type="number" min={1} max={presentCount}
+                  <label className="label" htmlFor="pool-size-input">Taille cible</label>
+                  <input id="pool-size-input" className="input" type="number" min={1} max={presentCount}
                     value={poolSizeInput}
                     onChange={e => {
                       setPoolSizeInput(e.target.value)
@@ -302,7 +303,7 @@ export default function PoolsPage() {
                 </p>
               )}
               <div>
-                <label className="label">Répartition</label>
+                <p className="label">Répartition</p>
                 <div className="flex gap-3 mt-1">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="radio" name="seeding" checked={seedingBalanced} onChange={() => setSeedingBalanced(true)} className="accent-blue-600" />
@@ -316,7 +317,7 @@ export default function PoolsPage() {
               </div>
               {!contest.isTeamEvent && (
                 <div>
-                  <label className="label">Séparation</label>
+                  <p className="label">Séparation</p>
                   <p className="text-xs text-gray-400 mb-1">Éviter deux tireurs du même dans la même poule</p>
                   <div className="flex gap-3 flex-wrap mt-1">
                     {(['club','country','league'] as const).map(crit => {
@@ -480,7 +481,7 @@ export default function PoolsPage() {
                       onEdit={() => startEdit(bout)}
                       onSave={() => saveBout(bout.id)}
                       onCancel={() => setEditingBout(null)}
-                      onAbsent={(side) => setPoolBoutAbsent(tournamentId!, contestId!, stageId!, pool.id, bout.id, side)}
+                      onAbsent={(side) => setPoolBoutAbsent(tournamentId, contestId, stageId, pool.id, bout.id, side)}
                       onQuickScore={(sa, sb) => quickSaveBout(bout.id, sa, sb)}
                       disabled={stage.status === 'done'}
                     />
@@ -896,7 +897,7 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
   return (
     <div className={`rounded-lg border p-2 ${scored ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-200'} ${bout.resultA === 'A' || bout.resultB === 'A' ? 'opacity-60' : ''}`}>
       {/* Backdrop to close popup on outside click */}
-      {openSide && <div className="fixed inset-0 z-[9998]" onClick={() => { setOpenSide(null); setPopupPos(null) }} />}
+      {openSide && <div className="fixed inset-0 z-[9998]" role="button" tabIndex={-1} aria-label="Fermer" onClick={() => { setOpenSide(null); setPopupPos(null) }} onKeyDown={e => { if (e.key === 'Escape') { setOpenSide(null); setPopupPos(null) } }} />}
       {openSide && popupPos && (
         <QuickPopup
           scores={openSide === 'A' ? quickScoresA : quickScoresB}
@@ -922,7 +923,7 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
             <input type="number" min="0" max={maxScore} value={scoreAInput}
               onChange={e => onScoreAChange(e.target.value)}
               className={`w-12 text-center border rounded px-1 py-0.5 text-sm shrink-0 ${inputError ? 'border-red-400 bg-red-50' : ''}`}
-              autoFocus />
+              />
             <span className="text-gray-400 font-bold shrink-0">—</span>
             <input type="number" min="0" max={maxScore} value={scoreBInput}
               onChange={e => onScoreBChange(e.target.value)}
@@ -973,7 +974,7 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
               ▾ V
             </button>
           )}
-          {!disabled && <span className="text-gray-300 text-xs cursor-pointer shrink-0 ml-1" onClick={onEdit}>✏️</span>}
+          {!disabled && <span className="text-gray-300 text-xs cursor-pointer shrink-0 ml-1" role="button" tabIndex={0} onClick={onEdit} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onEdit() }}>✏️</span>}
         </div>
       )}
     </div>

@@ -23,7 +23,7 @@ function roundLabelShort(round: number): string {
 }
 
 export default function TableauPage() {
-  const { tournamentId, contestId, stageId } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
+  const { tournamentId = '', contestId = '', stageId = '' } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
   const { tournaments, setTableauBoutScore, lockTableauPhase, unlockTableauPhase, lockTableauRound, unlockTableauRound, fillRandomTableauBouts } = useStore()
   const tournament = tournaments.find(t => t.id === tournamentId)
   const contest = tournament?.contests.find(c => c.id === contestId)
@@ -55,7 +55,7 @@ export default function TableauPage() {
   const rounds = Array.from(new Set(stage.bouts.filter(b => !b.bracket).map(b => b.round))).sort((a, b) => b - a)
 
   // Consolation bracket IDs and their labels
-  const consolationBracketIds = Array.from(new Set(stage.bouts.filter(b => b.bracket?.startsWith('cons-from-')).map(b => b.bracket!)))
+  const consolationBracketIds = Array.from(new Set(stage.bouts.filter(b => b.bracket?.startsWith('cons-from-')).map(b => b.bracket as string)))
   function consolationLabel(bracketId: string): string {
     const match = bracketId.match(/cons-from-(\d+)/)
     if (!match) return bracketId
@@ -91,14 +91,14 @@ export default function TableauPage() {
     if (sa === sb) return
     if (sa < 0 || sb < 0) return
     if (sa > stage.maxScore || sb > stage.maxScore) return
-    await setTableauBoutScore(tournamentId!, contestId!, stageId!, boutId, sa, sb)
+    await setTableauBoutScore(tournamentId, contestId, stageId, boutId, sa, sb)
     setEditingBout(null)
     setScoreA('')
     setScoreB('')
   }
 
   async function quickSaveBout(boutId: string, sa: number, sb: number) {
-    await setTableauBoutScore(tournamentId!, contestId!, stageId!, boutId, sa, sb)
+    await setTableauBoutScore(tournamentId, contestId, stageId, boutId, sa, sb)
     setEditingBout(null)
     setScoreA('')
     setScoreB('')
@@ -122,9 +122,9 @@ export default function TableauPage() {
     const finalRound = Math.min(...rounds)
     if (round === finalRound) {
       // Locking the finale closes the whole phase
-      await lockTableauPhase(tournamentId!, contestId!, stageId!)
+      await lockTableauPhase(tournamentId, contestId, stageId)
     } else {
-      await lockTableauRound(tournamentId!, contestId!, stageId!, round)
+      await lockTableauRound(tournamentId, contestId, stageId, round)
       // collapse all, expand the next round (round / 2)
       const nextRound = round / 2
       setExpandedRounds(new Set(rounds.includes(nextRound) ? [nextRound] : []))
@@ -143,7 +143,7 @@ export default function TableauPage() {
         <span>/</span>
         <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>
         <span>/</span>
-        <ContestBreadcrumb tournament={tournament} contest={contest} tournamentId={tournamentId!} />
+        <ContestBreadcrumb tournament={tournament} contest={contest} tournamentId={tournamentId} />
         <span>/</span>
         <span className="text-gray-800 font-medium">{stage.name}</span>
       </div>
@@ -163,7 +163,7 @@ export default function TableauPage() {
             <>
               <button className="btn-secondary" onClick={() => window.print()}>🖨️ Imprimer le tableau</button>
               <button className="btn-secondary"
-                onClick={() => unlockTableauPhase(tournamentId!, contestId!, stageId!)}>
+                onClick={() => unlockTableauPhase(tournamentId, contestId, stageId)}>
                 🔓 Rouvrir pour correction
               </button>
             </>
@@ -255,7 +255,7 @@ export default function TableauPage() {
                 <div className="flex gap-2 ml-auto">
                   {import.meta.env.DEV && stage.status === 'running' && !isLocked && !prevRoundOpen && allScoredBouts.some(b => !b.winnerId) && (
                     <button className="text-xs py-1 px-2 rounded border border-orange-300 text-orange-700 hover:bg-orange-50 transition-colors"
-                      onClick={() => fillRandomTableauBouts(tournamentId!, contestId!, stageId!, round)}>
+                      onClick={() => fillRandomTableauBouts(tournamentId, contestId, stageId, round)}>
                       🎲
                     </button>
                   )}
@@ -273,7 +273,7 @@ export default function TableauPage() {
                   )}
                   {stage.status === 'running' && isLastLocked && (
                     <button className="text-xs py-1 px-2 rounded border border-orange-300 text-orange-700 hover:bg-orange-50 transition-colors"
-                      onClick={() => unlockTableauRound(tournamentId!, contestId!, stageId!, round)}>
+                      onClick={() => unlockTableauRound(tournamentId, contestId, stageId, round)}>
                       🔓 Rouvrir
                     </button>
                   )}
@@ -717,7 +717,7 @@ function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, sco
 
   return (
     <div className={`border rounded-lg shadow-sm ${hasResult ? 'border-green-200' : 'border-gray-200'}`}>
-      {openSide && <div className="fixed inset-0 z-[9998]" onClick={() => { setOpenSide(null); setPopupPos(null) }} />}
+      {openSide && <div className="fixed inset-0 z-[9998]" role="button" tabIndex={-1} aria-label="Fermer" onClick={() => { setOpenSide(null); setPopupPos(null) }} onKeyDown={e => { if (e.key === 'Escape') { setOpenSide(null); setPopupPos(null) } }} />}
       {openSide && popupPos && (
         <QuickPopup
           scores={openSide === 'A' ? quickScoresA : quickScoresB}
@@ -733,7 +733,7 @@ function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, sco
         <div className="flex items-center gap-1 shrink-0 ml-2">
           {isEditing
             ? <input type="number" min="0" max={maxScore} value={scoreAInput} onChange={e => onScoreAChange(e.target.value)}
-                className={`w-10 text-center border rounded px-1 py-0.5 text-sm ${err ? 'border-red-400 bg-red-50' : ''}`} autoFocus />
+                className={`w-10 text-center border rounded px-1 py-0.5 text-sm ${err ? 'border-red-400 bg-red-50' : ''}`} />
             : bout.scoreA !== undefined && <span className={`text-sm font-mono font-bold ${isWinnerA ? 'text-green-700' : 'text-gray-500'}`}>{bout.scoreA}</span>
           }
           {canEdit && (

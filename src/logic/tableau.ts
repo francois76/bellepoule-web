@@ -102,7 +102,7 @@ export function propagateByes(bouts: TableauBout[]): TableauBout[] {
 
         if (!emptyBranchHasPlayer) {
           // Definitive BYE: auto-advance the present player
-          const winnerId = (bout.fencerAId ?? bout.fencerBId)!
+          const winnerId = (bout.fencerAId ?? bout.fencerBId) as string
           bout.winnerId = winnerId
           changed = true
           // Propagate into next round slot

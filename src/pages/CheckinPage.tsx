@@ -15,7 +15,7 @@ const EMPTY_FENCER_FORM = { lastName: '', firstName: '', gender: 'M' as 'M' | 'F
 const EMPTY_TEAM_FORM = { name: '', club: '', initialRank: '', fencerIds: [] as string[], rankingMode: 'auto' as 'auto' | 'manual' }
 
 export default function CheckinPage() {
-  const { tournamentId, contestId } = useParams<{ tournamentId: string; contestId: string }>()
+  const { tournamentId = '', contestId = '' } = useParams<{ tournamentId: string; contestId: string }>()
   const {
     tournaments,
     addFencer, updateFencer, removeFencer,
@@ -123,8 +123,8 @@ export default function CheckinPage() {
     if (key === 'club') return cmp(a.club ?? '', b.club ?? '', dir)
     if (key === 'initialRank') return cmp(a.initialRank, b.initialRank, dir)
     if (key === 'presentMembers') {
-      const pA = a.fencerIds.map(id => contest.fencers.find(f => f.id === id)).filter(Boolean).filter((f: any) => f.present).length
-      const pB = b.fencerIds.map(id => contest.fencers.find(f => f.id === id)).filter(Boolean).filter((f: any) => f.present).length
+      const pA = a.fencerIds.map(id => contest.fencers.find(f => f.id === id)).filter((f): f is Fencer => f !== undefined && f.present).length
+      const pB = b.fencerIds.map(id => contest.fencers.find(f => f.id === id)).filter((f): f is Fencer => f !== undefined && f.present).length
       return cmp(pA, pB, dir)
     }
     return 0
@@ -143,7 +143,7 @@ export default function CheckinPage() {
     e.preventDefault()
     const err = validateFencer(form)
     if (err) return alert(err)
-    await addFencer(tournamentId!, contestId!, {
+    await addFencer(tournamentId, contestId, {
       lastName: form.lastName.trim(),
       firstName: form.firstName.trim(),
       gender: form.gender,
@@ -176,7 +176,7 @@ export default function CheckinPage() {
     e.preventDefault()
     const err = validateFencer(editFencerForm)
     if (err) return alert(err)
-    await updateFencer(tournamentId!, contestId!, {
+    await updateFencer(tournamentId, contestId, {
       ...fencer,
       lastName: editFencerForm.lastName.trim(),
       firstName: editFencerForm.firstName.trim(),
@@ -194,7 +194,7 @@ export default function CheckinPage() {
   async function handleAddTeam(e: React.FormEvent) {
     e.preventDefault()
     if (!teamForm.name.trim()) return
-    await addTeam(tournamentId!, contestId!, {
+    await addTeam(tournamentId, contestId, {
       name: teamForm.name.trim(),
       club: teamForm.club.trim() || undefined,
       initialRank: teamForm.initialRank ? parseInt(teamForm.initialRank) : undefined,
@@ -220,8 +220,9 @@ export default function CheckinPage() {
 
   function handleSaveTeam(e: React.FormEvent, team: Team) {
     e.preventDefault()
+    if (!contest) return
     if (!editTeamForm.name.trim()) return
-    updateTeam(tournamentId!, contestId!, {
+      updateTeam(tournamentId, contestId, {
       ...team,
       name: editTeamForm.name.trim(),
       club: editTeamForm.club.trim() || undefined,
@@ -231,7 +232,7 @@ export default function CheckinPage() {
         : editTeamForm.rankingMode === 'auto'
           ? (() => {
               const memberRanks = editTeamForm.fencerIds
-                .map(id => contest!.fencers.find(f => f.id === id)?.initialRank ?? 99999)
+                .map(id => contest.fencers.find(f => f.id === id)?.initialRank ?? 99999)
                 .sort((a, b) => a - b)
               const n = Math.min(3, memberRanks.length)
               const sum = memberRanks.slice(0, n).reduce((s, r) => s + r, 0)
@@ -269,21 +270,22 @@ export default function CheckinPage() {
       alert(err instanceof Error ? err.message : 'Erreur import fichier')
     }
     for (const f of fencers) {
-      await addFencer(tournamentId!, contestId!, f)
+      await addFencer(tournamentId, contestId, f)
     }
     for (const team of importedTeams) {
-      await addTeam(tournamentId!, contestId!, { name: team.name, club: team.club, fencerIds: team.fencerIds, present: team.present, initialRank: team.initialRank })
+      await addTeam(tournamentId, contestId, { name: team.name, club: team.club, fencerIds: team.fencerIds, present: team.present, initialRank: team.initialRank })
     }
     e.target.value = ''
   }
 
   function handleSetAll(present: boolean) {
-    setAllPresence(tournamentId!, contestId!, present)
+    setAllPresence(tournamentId, contestId, present)
   }
 
   async function handleInjectFakers() {
+    if (!contest) return
     const n = parseInt(devCount) || 12
-    const existing = contest!.fencers.length
+    const existing = contest.fencers.length
     for (let i = 0; i < n; i++) {
       const rank = existing + i + 1
       const fencer: Omit<Fencer, 'id'> = {
@@ -296,7 +298,7 @@ export default function CheckinPage() {
         initialRank: rank,
         present: true,
       }
-      await addFencer(tournamentId!, contestId!, fencer)
+      await addFencer(tournamentId, contestId, fencer)
     }
   }
 
@@ -391,7 +393,7 @@ export default function CheckinPage() {
           <span>/</span>
           <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>
           <span>/</span>
-          <ContestBreadcrumb tournament={tournament} contest={contest} tournamentId={tournamentId!} />
+          <ContestBreadcrumb tournament={tournament} contest={contest} tournamentId={tournamentId} />
           <span>/</span>
           <span className="text-gray-800 font-medium">Checkin</span>
         </div>
@@ -435,11 +437,11 @@ export default function CheckinPage() {
               <h2 className="font-semibold text-blue-800">Équipes</h2>
               <div className="flex gap-2">
                 <button className="text-xs btn-secondary py-1 px-2"
-                  onClick={() => setAllPresence(tournamentId!, contestId!, true)}>
+                  onClick={() => setAllPresence(tournamentId, contestId, true)}>
                   Toutes présentes
                 </button>
                 <button className="text-xs btn-secondary py-1 px-2"
-                  onClick={() => setAllPresence(tournamentId!, contestId!, false)}>
+                  onClick={() => setAllPresence(tournamentId, contestId, false)}>
                   Toutes absentes
                 </button>
                 <button className="text-xs btn-primary py-1 px-2"
@@ -455,16 +457,16 @@ export default function CheckinPage() {
                 <h3 className="font-semibold text-gray-700 text-sm">Nouvelle équipe</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="label">Nom *</label>
-                    <input className="input" value={teamForm.name} onChange={e => setTeamForm(f => ({ ...f, name: e.target.value }))} autoFocus />
+                    <label className="label" htmlFor="team-add-name">Nom *</label>
+                    <input id="team-add-name" className="input" value={teamForm.name} onChange={e => setTeamForm(f => ({ ...f, name: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="label">Club</label>
-                    <input className="input" value={teamForm.club} onChange={e => setTeamForm(f => ({ ...f, club: e.target.value }))} />
+                    <label className="label" htmlFor="team-add-club">Club</label>
+                    <input id="team-add-club" className="input" value={teamForm.club} onChange={e => setTeamForm(f => ({ ...f, club: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="label">Rang initial</label>
-                    <input type="number" className="input" value={teamForm.initialRank} onChange={e => setTeamForm(f => ({ ...f, initialRank: e.target.value }))} placeholder="1" />
+                    <label className="label" htmlFor="team-add-rank">Rang initial</label>
+                    <input id="team-add-rank" type="number" className="input" value={teamForm.initialRank} onChange={e => setTeamForm(f => ({ ...f, initialRank: e.target.value }))} placeholder="1" />
                   </div>
                   <TeamMemberPicker
                     fencerIds={teamForm.fencerIds}
@@ -507,15 +509,15 @@ export default function CheckinPage() {
                               <form onSubmit={e => handleSaveTeam(e, team)} className="space-y-3">
                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                   <div>
-                                    <label className="label">Nom *</label>
-                                    <input className="input" value={editTeamForm.name} onChange={e => setEditTeamForm(f => ({ ...f, name: e.target.value }))} autoFocus />
+                                    <label className="label" htmlFor="team-edit-name">Nom *</label>
+                                    <input id="team-edit-name" className="input" value={editTeamForm.name} onChange={e => setEditTeamForm(f => ({ ...f, name: e.target.value }))} />
                                   </div>
                                   <div>
-                                    <label className="label">Club</label>
-                                    <input className="input" value={editTeamForm.club} onChange={e => setEditTeamForm(f => ({ ...f, club: e.target.value }))} />
+                                    <label className="label" htmlFor="team-edit-club">Club</label>
+                                    <input id="team-edit-club" className="input" value={editTeamForm.club} onChange={e => setEditTeamForm(f => ({ ...f, club: e.target.value }))} />
                                   </div>
                                   <div>
-                                    <label className="label">Classement</label>
+                                    <p className="label">Classement</p>
                                     <div className="flex gap-3 mt-1">
                                       <label className="flex items-center gap-1.5 cursor-pointer">
                                         <input type="radio" name="rankingMode" className="accent-blue-600"
@@ -562,7 +564,7 @@ export default function CheckinPage() {
                               title={presentMembers < minTeamSize && team.present === false
                                 ? `Minimum requis : ${minTeamSize} membre(s) présent(s) (${presentMembers} actuellement)`
                                 : undefined}
-                              onChange={e => setTeamPresence(tournamentId!, contestId!, team.id, e.target.checked)}
+                              onChange={e => setTeamPresence(tournamentId, contestId, team.id, e.target.checked)}
                               className="w-4 h-4 accent-blue-600 disabled:opacity-40 disabled:cursor-not-allowed" />
                           </td>
                           <td className="px-4 py-2 font-medium text-gray-800">{team.name}</td>
@@ -585,7 +587,7 @@ export default function CheckinPage() {
                             <button className="text-gray-400 hover:text-blue-600 transition-colors text-xs"
                               onClick={() => startEditTeam(team)}>✎</button>
                             <button className="text-gray-300 hover:text-red-500 transition-colors"
-                              onClick={() => { if (confirm(`Supprimer l'équipe "${team.name}" ?`)) removeTeam(tournamentId!, contestId!, team.id) }}>✕</button>
+                              onClick={() => { if (confirm(`Supprimer l'équipe "${team.name}" ?`)) removeTeam(tournamentId, contestId, team.id) }}>✕</button>
                           </td>
                         </tr>
                       )
@@ -632,41 +634,41 @@ export default function CheckinPage() {
             <h2 className="font-semibold text-gray-700">Nouveau tireur</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div>
-                <label className="label">Nom *</label>
-                <input className="input" value={form.lastName} onChange={e => setForm(f => ({...f, lastName: e.target.value}))} autoFocus />
+                <label className="label" htmlFor="fencer-add-last-name">Nom *</label>
+                <input id="fencer-add-last-name" className="input" value={form.lastName} onChange={e => setForm(f => ({...f, lastName: e.target.value}))} />
               </div>
               <div>
-                <label className="label">Prénom *</label>
-                <input className="input" value={form.firstName} onChange={e => setForm(f => ({...f, firstName: e.target.value}))} />
+                <label className="label" htmlFor="fencer-add-first-name">Prénom *</label>
+                <input id="fencer-add-first-name" className="input" value={form.firstName} onChange={e => setForm(f => ({...f, firstName: e.target.value}))} />
               </div>
               <div>
-                <label className="label">Genre</label>
-                <select className="input" value={form.gender} onChange={e => setForm(f => ({...f, gender: e.target.value as 'M'|'F'}))}>
+                <label className="label" htmlFor="fencer-add-gender">Genre</label>
+                <select id="fencer-add-gender" className="input" value={form.gender} onChange={e => setForm(f => ({...f, gender: e.target.value as 'M'|'F'}))}>
                   <option value="M">M</option>
                   <option value="F">F</option>
                 </select>
               </div>
               {displayConfig.club.visible && (
                 <div>
-                  <label className="label">Club *</label>
-                  <input className="input" value={form.club} onChange={e => setForm(f => ({...f, club: e.target.value}))} />
+                  <label className="label" htmlFor="fencer-add-club">Club *</label>
+                  <input id="fencer-add-club" className="input" value={form.club} onChange={e => setForm(f => ({...f, club: e.target.value}))} />
                 </div>
               )}
               {displayConfig.licence.visible && (
                 <div>
-                  <label className="label">N° Licence *</label>
-                  <input className="input" value={form.licenceNumber} onChange={e => setForm(f => ({...f, licenceNumber: e.target.value}))} />
+                  <label className="label" htmlFor="fencer-add-licence">N° Licence *</label>
+                  <input id="fencer-add-licence" className="input" value={form.licenceNumber} onChange={e => setForm(f => ({...f, licenceNumber: e.target.value}))} />
                 </div>
               )}
               {displayConfig.dateOfBirth.visible && (
                 <div>
-                  <label className="label">Date de naissance *</label>
-                  <input type="date" className="input" value={form.birthDate} onChange={e => setForm(f => ({...f, birthDate: e.target.value}))} />
+                  <label className="label" htmlFor="fencer-add-dob">Date de naissance *</label>
+                  <input id="fencer-add-dob" type="date" className="input" value={form.birthDate} onChange={e => setForm(f => ({...f, birthDate: e.target.value}))} />
                 </div>
               )}
               <div>
-                <label className="label">Classement initial</label>
-                <input type="number" className="input" value={form.initialRank} onChange={e => setForm(f => ({...f, initialRank: e.target.value}))} placeholder="1" />
+                <label className="label" htmlFor="fencer-add-rank">Classement initial</label>
+                <input id="fencer-add-rank" type="number" className="input" value={form.initialRank} onChange={e => setForm(f => ({...f, initialRank: e.target.value}))} placeholder="1" />
               </div>
             </div>
             <div className="flex gap-2 justify-end">
@@ -711,35 +713,35 @@ export default function CheckinPage() {
                             <form onSubmit={e => handleSaveFencer(e, f)} className="space-y-3">
                               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                 <div>
-                                  <label className="label">Nom *</label>
-                                  <input className="input" value={editFencerForm.lastName} onChange={e => setEditFencerForm(v => ({...v, lastName: e.target.value}))} autoFocus />
+                                  <label className="label" htmlFor="fencer-edit-last-name">Nom *</label>
+                                  <input id="fencer-edit-last-name" className="input" value={editFencerForm.lastName} onChange={e => setEditFencerForm(v => ({...v, lastName: e.target.value}))} />
                                 </div>
                                 <div>
-                                  <label className="label">Prénom *</label>
-                                  <input className="input" value={editFencerForm.firstName} onChange={e => setEditFencerForm(v => ({...v, firstName: e.target.value}))} />
+                                  <label className="label" htmlFor="fencer-edit-first-name">Prénom *</label>
+                                  <input id="fencer-edit-first-name" className="input" value={editFencerForm.firstName} onChange={e => setEditFencerForm(v => ({...v, firstName: e.target.value}))} />
                                 </div>
                                 <div>
-                                  <label className="label">Genre</label>
-                                  <select className="input" value={editFencerForm.gender} onChange={e => setEditFencerForm(v => ({...v, gender: e.target.value as 'M'|'F'}))}>
+                                  <label className="label" htmlFor="fencer-edit-gender">Genre</label>
+                                  <select id="fencer-edit-gender" className="input" value={editFencerForm.gender} onChange={e => setEditFencerForm(v => ({...v, gender: e.target.value as 'M'|'F'}))}>
                                     <option value="M">M</option>
                                     <option value="F">F</option>
                                   </select>
                                 </div>
                                 <div>
-                                  <label className="label">Club {displayConfig.club.visible && '*'}</label>
-                                  <input className="input" value={editFencerForm.club} onChange={e => setEditFencerForm(v => ({...v, club: e.target.value}))} />
+                                  <label className="label" htmlFor="fencer-edit-club">Club {displayConfig.club.visible && '*'}</label>
+                                  <input id="fencer-edit-club" className="input" value={editFencerForm.club} onChange={e => setEditFencerForm(v => ({...v, club: e.target.value}))} />
                                 </div>
                                 <div>
-                                  <label className="label">N° Licence {displayConfig.licence.visible && '*'}</label>
-                                  <input className="input" value={editFencerForm.licenceNumber} onChange={e => setEditFencerForm(v => ({...v, licenceNumber: e.target.value}))} />
+                                  <label className="label" htmlFor="fencer-edit-licence">N° Licence {displayConfig.licence.visible && '*'}</label>
+                                  <input id="fencer-edit-licence" className="input" value={editFencerForm.licenceNumber} onChange={e => setEditFencerForm(v => ({...v, licenceNumber: e.target.value}))} />
                                 </div>
                                 <div>
-                                  <label className="label">Date de naissance {displayConfig.dateOfBirth.visible && '*'}</label>
-                                  <input type="date" className="input" value={editFencerForm.birthDate} onChange={e => setEditFencerForm(v => ({...v, birthDate: e.target.value}))} />
+                                  <label className="label" htmlFor="fencer-edit-dob">Date de naissance {displayConfig.dateOfBirth.visible && '*'}</label>
+                                  <input id="fencer-edit-dob" type="date" className="input" value={editFencerForm.birthDate} onChange={e => setEditFencerForm(v => ({...v, birthDate: e.target.value}))} />
                                 </div>
                                 <div>
-                                  <label className="label">Classement initial</label>
-                                  <input type="number" className="input" value={editFencerForm.initialRank} onChange={e => setEditFencerForm(v => ({...v, initialRank: e.target.value}))} />
+                                  <label className="label" htmlFor="fencer-edit-rank">Classement initial</label>
+                                  <input id="fencer-edit-rank" type="number" className="input" value={editFencerForm.initialRank} onChange={e => setEditFencerForm(v => ({...v, initialRank: e.target.value}))} />
                                 </div>
                               </div>
                               <div className="flex gap-2 justify-end">
@@ -755,7 +757,7 @@ export default function CheckinPage() {
                       <tr key={f.id} className={`border-b border-gray-100 ${idx % 2 === 0 ? '' : 'bg-gray-50'} ${!f.present ? 'opacity-50' : ''}`}>
                         <td className="px-4 py-2">
                           <input type="checkbox" checked={f.present}
-                            onChange={e => setPresence(tournamentId!, contestId!, f.id, e.target.checked)}
+                            onChange={e => setPresence(tournamentId, contestId, f.id, e.target.checked)}
                             className="w-4 h-4 accent-blue-600" />
                         </td>
                         <td className="px-4 py-2 font-medium text-gray-800">{f.lastName.toUpperCase()}</td>
@@ -769,7 +771,7 @@ export default function CheckinPage() {
                           <button className="text-gray-400 hover:text-blue-600 transition-colors text-xs"
                             onClick={() => startEditFencer(f)}>✎</button>
                           <button className="text-gray-300 hover:text-red-500 transition-colors"
-                            onClick={() => { if (confirm(`Supprimer ${f.lastName} ?`)) removeFencer(tournamentId!, contestId!, f.id) }}>✕</button>
+                            onClick={() => { if (confirm(`Supprimer ${f.lastName} ?`)) removeFencer(tournamentId, contestId, f.id) }}>✕</button>
                         </td>
                       </tr>
                     )
@@ -798,7 +800,7 @@ function TeamMemberPicker({ fencerIds, onChange, contest, editingTeamId }: { fen
   }
   return (
     <div className="col-span-full">
-      <label className="label">Membres</label>
+      <p className="label">Membres</p>
       <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-2 grid grid-cols-2 sm:grid-cols-3 gap-1">
         {visible.map(f => (
           <label key={f.id} className="flex items-center gap-1 text-sm cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5">

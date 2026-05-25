@@ -62,7 +62,7 @@ function scoreHint(category: string | undefined, phase: 'pool' | 'tableau'): str
 }
 
 export default function ContestPage() {
-  const { tournamentId, contestId } = useParams<{ tournamentId: string; contestId: string }>()
+  const { tournamentId = '', contestId = '' } = useParams<{ tournamentId: string; contestId: string }>()
   const { tournaments, addPoolPhase, addTableauPhase, addBarragePhase, updateContest, removeStage } = useStore()
   const navigate = useNavigate()
   const tournament = tournaments.find(t => t.id === tournamentId)
@@ -92,7 +92,8 @@ export default function ContestPage() {
     : (contest?.fencers ?? []).filter(f => f.present).length
 
   function openPoolModal() {
-    const n = contest!.stages.filter(s => s.type === 'pool').length + 1
+    if (!contest) return
+    const n = contest.stages.filter(s => s.type === 'pool').length + 1
     setPoolForm({ name: `Tour de poules ${n}`, maxScore: suggestedMaxScore(contest?.category, 'pool'), promotionPercent: '100' })
     setPoolModal(true)
   }
@@ -100,7 +101,7 @@ export default function ContestPage() {
   async function handleCreatePool(e: React.FormEvent) {
     e.preventDefault()
     await addPoolPhase(
-      tournamentId!, contestId!,
+      tournamentId, contestId,
       poolForm.name.trim(),
       parseInt(poolForm.maxScore) || 5,
       parseInt(poolForm.promotionPercent) || 75,
@@ -113,16 +114,17 @@ export default function ContestPage() {
   }
 
   function openTableauModal() {
-    const lastPool = [...(contest!.stages ?? [])].reverse().find(s => s.type === 'pool') as PoolPhase | undefined
+    if (!contest) return
+    const lastPool = [...(contest.stages ?? [])].reverse().find(s => s.type === 'pool') as PoolPhase | undefined
     const excludedFromPool = new Set(
       Object.entries(lastPool?.fencerStatuses ?? {})
         .filter(([, s]) => s === 'withdrawal' || s === 'excluded')
         .map(([id]) => id)
     )
     const qualifiedIds = lastPool?.results?.filter(r => r.status === 'qualified' && !excludedFromPool.has(r.fencerId)).map(r => r.fencerId) ?? []
-    const qualifiedCount = contest!.isTeamEvent
-      ? qualifiedIds.filter(id => (contest!.teams ?? []).find(t => t.id === id)?.present !== false).length
-      : qualifiedIds.filter(id => contest!.fencers.find(f => f.id === id)?.present !== false).length
+    const qualifiedCount = contest.isTeamEvent
+      ? qualifiedIds.filter(id => (contest.teams ?? []).find(t => t.id === id)?.present !== false).length
+      : qualifiedIds.filter(id => contest.fencers.find(f => f.id === id)?.present !== false).length
     // Fallback to presentCount when no pool phase has been run
     const effectiveCount = qualifiedCount > 0 ? qualifiedCount : presentCount
     let autoSize: number = effectiveCount > 0 ? 4 : 64
@@ -137,7 +139,7 @@ export default function ContestPage() {
     e.preventDefault()
     const size = parseInt(tableauForm.size) as TableauSize
     await addTableauPhase(
-      tournamentId!, contestId!,
+      tournamentId, contestId,
       `Tableau de ${size}`,
       size,
       parseInt(tableauForm.maxScore) || 15,
@@ -151,7 +153,8 @@ export default function ContestPage() {
   }
 
   function openBarrageModal() {
-    const n = contest!.stages.filter(s => s.type === 'barrage').length + 1
+    if (!contest) return
+    const n = contest.stages.filter(s => s.type === 'barrage').length + 1
     setBarrageForm({ name: `Barrage ${n}`, maxScore: suggestedMaxScore(contest?.category, 'pool') })
     setBarrageModal(true)
   }
@@ -159,7 +162,7 @@ export default function ContestPage() {
   async function handleCreateBarrage(e: React.FormEvent) {
     e.preventDefault()
     await addBarragePhase(
-      tournamentId!, contestId!,
+      tournamentId, contestId,
       barrageForm.name.trim(),
       parseInt(barrageForm.maxScore) || 5,
     )
@@ -178,15 +181,17 @@ export default function ContestPage() {
   }
 
   async function handleToggleStuffing() {
-    await updateContest(tournamentId!, { ...contest!, autoScoreStuffing: !autoScoreStuffing })
+    if (!contest) return
+    await updateContest(tournamentId, { ...contest, autoScoreStuffing: !autoScoreStuffing })
   }
 
   async function handleDisplayFieldChange(field: keyof DisplayConfig, key: keyof DisplayFieldConfig, val: boolean) {
+    if (!contest) return
     const newConfig: DisplayConfig = {
       ...displayConfig,
       [field]: { ...displayConfig[field], [key]: val },
     }
-    await updateContest(tournamentId!, { ...contest!, displayConfig: newConfig })
+    await updateContest(tournamentId, { ...contest, displayConfig: newConfig })
   }
 
   return (
@@ -198,7 +203,7 @@ export default function ContestPage() {
         <span>/</span>
         <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>
         <span>/</span>
-        <ContestBreadcrumb tournament={tournament} contest={contest} tournamentId={tournamentId!} />
+        <ContestBreadcrumb tournament={tournament} contest={contest} tournamentId={tournamentId} />
       </div>
 
       <div className="flex items-start justify-between flex-wrap gap-2">
@@ -259,7 +264,10 @@ export default function ContestPage() {
               <div key={stage.id}
                 className="card flex items-center justify-between hover:shadow-md transition-shadow">
                 <div className="flex items-center gap-2 flex-1 cursor-pointer"
-                  onClick={() => navigateToStage(stage)}>
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigateToStage(stage)}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') navigateToStage(stage) }}>
                   <span className="font-medium text-gray-800">{stage.name}</span>
                   <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
                     {stageLabel[stage.type] ?? stage.type}
@@ -274,7 +282,7 @@ export default function ContestPage() {
                       onClick={e => {
                         e.stopPropagation()
                         if (confirm(`Supprimer la phase « ${stage.name} » ? Cette action est irréversible.`)) {
-                          removeStage(tournamentId!, contestId!, stage.id)
+                          removeStage(tournamentId, contestId, stage.id)
                         }
                       }}
                     >✕</button>
@@ -325,11 +333,11 @@ export default function ContestPage() {
                     considérée comme absente et ne peut pas participer aux poules.
                   </p>
                   <div className="flex items-center gap-3">
-                    <label className="text-sm text-gray-700">Minimum de membres :</label>
-                    <input type="number" min={1} max={10}
+                    <label className="text-sm text-gray-700" htmlFor="min-team-size-settings">Minimum de membres :</label>
+                    <input id="min-team-size-settings" type="number" min={1} max={10}
                       className="input w-24"
                       defaultValue={contest.minTeamSize ?? 3}
-                      onBlur={e => updateContest(tournamentId!, { ...contest!, minTeamSize: parseInt(e.target.value) || 3 })} />
+                      onBlur={e => updateContest(tournamentId, { ...contest, minTeamSize: parseInt(e.target.value) || 3 })} />
                   </div>
                   <p className="text-xs text-gray-400">
                     Actuellement : {contest.minTeamSize ?? 3} membre{(contest.minTeamSize ?? 3) > 1 ? 's' : ''} minimum
@@ -383,7 +391,7 @@ export default function ContestPage() {
                   value={FENCING_CATEGORIES.some(c => c.value === contest.category) ? contest.category : '__other'}
                   onChange={e => {
                     if (e.target.value !== '__other') {
-                      updateContest(tournamentId!, { ...contest!, category: e.target.value || undefined })
+                      updateContest(tournamentId, { ...contest, category: e.target.value || undefined })
                     }
                   }}>
                   {FENCING_CATEGORIES.map(cat => (
@@ -411,21 +419,21 @@ export default function ContestPage() {
             <h2 className="text-lg font-bold text-gray-800">Nouveau tour de poules</h2>
             <form onSubmit={handleCreatePool} className="space-y-3">
               <div>
-                <label className="label">Nom</label>
-                <input className="input" value={poolForm.name}
+                <label className="label" htmlFor="pool-form-name">Nom</label>
+                <input id="pool-form-name" className="input" value={poolForm.name}
                   onChange={e => setPoolForm(f => ({ ...f, name: e.target.value }))} required />
               </div>
               <div>
-                <label className="label">Score maximum par match</label>
-                <input className="input" type="number" min={1} max={99} value={poolForm.maxScore}
+                <label className="label" htmlFor="pool-form-score">Score maximum par match</label>
+                <input id="pool-form-score" className="input" type="number" min={1} max={99} value={poolForm.maxScore}
                   onChange={e => setPoolForm(f => ({ ...f, maxScore: e.target.value }))} required />
                 {scoreHint(contest.category, 'pool') && (
                   <p className="text-xs text-blue-500 mt-1">{scoreHint(contest.category, 'pool')}</p>
                 )}
               </div>
               <div>
-                <label className="label">Pourcentage de qualifiés (%)</label>
-                <input className="input" type="number" min={1} max={100} value={poolForm.promotionPercent}
+                <label className="label" htmlFor="pool-form-percent">Pourcentage de qualifiés (%)</label>
+                <input id="pool-form-percent" className="input" type="number" min={1} max={100} value={poolForm.promotionPercent}
                   onChange={e => setPoolForm(f => ({ ...f, promotionPercent: e.target.value }))} required />
               </div>
               <div className="flex gap-2 pt-2">
@@ -444,8 +452,8 @@ export default function ContestPage() {
             <h2 className="text-lg font-bold text-gray-800">Nouveau tableau</h2>
             <form onSubmit={handleCreateTableau} className="space-y-3">
               <div>
-                <label className="label">Taille du tableau</label>
-                <select className="input" value={tableauForm.size}
+                <label className="label" htmlFor="tableau-form-size">Taille du tableau</label>
+                <select id="tableau-form-size" className="input" value={tableauForm.size}
                   onChange={e => setTableauForm(f => ({ ...f, size: e.target.value }))}>
                   {TABLEAU_SIZES.map(s => {
                     const tooLarge = tableauMinCount > 0 && s > 2 * tableauMinCount
@@ -458,26 +466,26 @@ export default function ContestPage() {
                 </select>
               </div>
               <div>
-                <label className="label">Score maximum</label>
-                <input className="input" type="number" min={1} max={99} value={tableauForm.maxScore}
+                <label className="label" htmlFor="tableau-form-score">Score maximum</label>
+                <input id="tableau-form-score" className="input" type="number" min={1} max={99} value={tableauForm.maxScore}
                   onChange={e => setTableauForm(f => ({ ...f, maxScore: e.target.value }))} required />
                 {scoreHint(contest.category, 'tableau') && (
                   <p className="text-xs text-blue-500 mt-1">{scoreHint(contest.category, 'tableau')}</p>
                 )}
               </div>
               <div>
-                <label className="label">Places tirées</label>
+                <p className="label">Places tirées</p>
                 <div className="space-y-2">
                   {FENCED_PLACES_OPTIONS.map(opt => (
-                    <label key={opt.value} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${tableauForm.fencedPlaces === opt.value ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                    <label key={opt.value} aria-label={opt.label} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${tableauForm.fencedPlaces === opt.value ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
                       <input type="radio" name="fencedPlaces" value={opt.value}
                         checked={tableauForm.fencedPlaces === opt.value}
                         onChange={() => setTableauForm(f => ({ ...f, fencedPlaces: opt.value }))}
                         className="mt-0.5 flex-shrink-0" />
-                      <div>
-                        <div className="text-sm font-medium text-gray-800">{opt.label}</div>
-                        <div className="text-xs text-gray-500 mt-0.5">{opt.hint}</div>
-                      </div>
+                      <span className="flex flex-col">
+                        <span className="text-sm font-medium text-gray-800">{opt.label}</span>
+                        <span className="text-xs text-gray-500 mt-0.5">{opt.hint}</span>
+                      </span>
                     </label>
                   ))}
                 </div>
@@ -499,13 +507,13 @@ export default function ContestPage() {
             <p className="text-sm text-gray-500">Départage entre tireurs ex-æquo à l'issue des poules.</p>
             <form onSubmit={handleCreateBarrage} className="space-y-3">
               <div>
-                <label className="label">Nom</label>
-                <input className="input" value={barrageForm.name}
-                  onChange={e => setBarrageForm(f => ({ ...f, name: e.target.value }))} required autoFocus />
+                <label className="label" htmlFor="barrage-form-name">Nom</label>
+                <input id="barrage-form-name" className="input" value={barrageForm.name}
+                  onChange={e => setBarrageForm(f => ({ ...f, name: e.target.value }))} required />
               </div>
               <div>
-                <label className="label">Score maximum</label>
-                <input className="input" type="number" min={1} max={99} value={barrageForm.maxScore}
+                <label className="label" htmlFor="barrage-form-score">Score maximum</label>
+                <input id="barrage-form-score" className="input" type="number" min={1} max={99} value={barrageForm.maxScore}
                   onChange={e => setBarrageForm(f => ({ ...f, maxScore: e.target.value }))} required />
                 {scoreHint(contest.category, 'pool') && (
                   <p className="text-xs text-blue-500 mt-1">{scoreHint(contest.category, 'pool')}</p>

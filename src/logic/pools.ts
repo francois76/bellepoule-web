@@ -151,7 +151,7 @@ type ParticipantInfo = { id: string; club?: string; country?: string; league?: s
  * A conflict occurs when two fencers in the same pool share the same
  * non-empty value for any criterion (club, country, or league).
  */
-function countConflicts(pools: Pool[], info: Map<string, ParticipantInfo>, criteria: Array<'club' | 'country' | 'league'>): number {
+function countConflicts(pools: Pool[], info: Map<string, ParticipantInfo>, criteria: ('club' | 'country' | 'league')[]): number {
   let count = 0
   for (const pool of pools) {
     for (const crit of criteria) {
@@ -178,7 +178,7 @@ function countConflicts(pools: Pool[], info: Map<string, ParticipantInfo>, crite
 export function applySeparationCriteria(
   pools: Pool[],
   participants: ParticipantInfo[],
-  criteria: Array<'club' | 'country' | 'league'>,
+  criteria: ('club' | 'country' | 'league')[],
 ): Pool[] {
   if (!criteria.length || pools.length <= 1) return pools
 

@@ -9,7 +9,7 @@ const WEAPON_LABEL: Record<string, string> = { epee: 'Épée', foil: 'Fleuret', 
 const GENDER_LABEL: Record<string, string> = { men: 'Messieurs', women: 'Dames', mixed: 'Mixte' }
 
 export default function ClassificationPage() {
-  const { tournamentId, contestId } = useParams<{ tournamentId: string; contestId: string }>()
+  const { tournamentId = '', contestId = '' } = useParams<{ tournamentId: string; contestId: string }>()
   const { tournaments } = useStore()
   const tournament = tournaments.find(t => t.id === tournamentId)
   const contest = tournament?.contests.find(c => c.id === contestId)
@@ -65,7 +65,7 @@ export default function ClassificationPage() {
       // No petite finale (or not yet played): both semi-final losers ex-aequo 3rd, sorted by pool rank
       const semiLosers = lastTableau.bouts
         .filter(b => b.round === 4 && b.boutIndex !== 2 && b.fencerAId && b.fencerBId && b.winnerId)
-        .map(b => (b.fencerAId === b.winnerId ? b.fencerBId! : b.fencerAId!))
+        .map(b => (b.fencerAId === b.winnerId ? b.fencerBId : b.fencerAId) as string)
         .sort((a, b) => (poolRank[a] ?? 9999) - (poolRank[b] ?? 9999))
       ranked.push(...semiLosers)
     }
@@ -78,7 +78,7 @@ export default function ClassificationPage() {
     for (const round of eliminationRounds) {
       const losers = lastTableau.bouts
         .filter(b => b.round === round && b.fencerAId && b.fencerBId && b.winnerId)
-        .map(b => (b.fencerAId === b.winnerId ? b.fencerBId! : b.fencerAId!))
+        .map(b => (b.fencerAId === b.winnerId ? b.fencerBId : b.fencerAId) as string)
         .filter(id => !ranked.includes(id))
         .sort((a, b) => (poolRank[a] ?? 9999) - (poolRank[b] ?? 9999))
       ranked.push(...losers)
@@ -124,7 +124,7 @@ export default function ClassificationPage() {
         <span>/</span>
         <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>
         <span>/</span>
-        <ContestBreadcrumb tournament={tournament} contest={contest} tournamentId={tournamentId!} />
+        <ContestBreadcrumb tournament={tournament} contest={contest} tournamentId={tournamentId} />
         <span>/</span>
         <span className="text-gray-800 font-medium">Classement</span>
       </div>
@@ -144,11 +144,8 @@ export default function ClassificationPage() {
         )}
         {(contest.location || tournament.location || contest.date || tournament.startDate) && (
           <p className="text-xs text-gray-600 mt-0.5">
-            {[
-              contest.location ?? tournament.location,
-              (contest.date ?? tournament.startDate)
-                ? new Date((contest.date ?? tournament.startDate)!).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-                : undefined,
+            {[              contest.location ?? tournament.location,
+              (() => { const d = contest.date ?? tournament.startDate; return d ? new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : undefined })(),
             ].filter(Boolean).join(' · ')}
           </p>
         )}

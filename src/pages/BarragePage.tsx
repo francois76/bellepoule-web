@@ -6,7 +6,7 @@ import { ContestBreadcrumb } from '../components/ContestBreadcrumb'
 import { BackArrow } from '../components/BackArrow'
 
 export default function BarragePage() {
-  const { tournamentId, contestId, stageId } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
+  const { tournamentId = '', contestId = '', stageId = '' } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
   const { tournaments, addBarrageBout, setBarrageBoutScore, lockBarragePhase, unlockBarragePhase } = useStore()
 
   const tournament = tournaments.find(t => t.id === tournamentId)
@@ -41,12 +41,13 @@ export default function BarragePage() {
   }
 
   async function saveBout(boutId: string) {
+    if (!stage) return
     const sa = parseInt(scoreA)
     const sb = parseInt(scoreB)
     if (isNaN(sa) || isNaN(sb)) return
-    if (sa > stage!.maxScore || sb > stage!.maxScore) return
+    if (sa > stage.maxScore || sb > stage.maxScore) return
     if (sa === sb) return
-    await setBarrageBoutScore(tournamentId!, contestId!, stageId!, boutId, sa, sb)
+    await setBarrageBoutScore(tournamentId, contestId, stageId, boutId, sa, sb)
     setEditingBout(null)
     setScoreA('')
     setScoreB('')
@@ -55,7 +56,7 @@ export default function BarragePage() {
   async function handleAddBout(e: React.FormEvent) {
     e.preventDefault()
     if (!boutFencerA || !boutFencerB || boutFencerA === boutFencerB) return
-    await addBarrageBout(tournamentId!, contestId!, stageId!, boutFencerA, boutFencerB)
+    await addBarrageBout(tournamentId, contestId, stageId, boutFencerA, boutFencerB)
     setBoutFencerA('')
     setBoutFencerB('')
     setAddBoutModal(false)
@@ -73,7 +74,7 @@ export default function BarragePage() {
         <span>/</span>
         <Link to={`/tournament/${tournamentId}`} className="hover:text-blue-600">{tournament.name}</Link>
         <span>/</span>
-        <ContestBreadcrumb tournament={tournament} contest={contest} tournamentId={tournamentId!} />
+        <ContestBreadcrumb tournament={tournament} contest={contest} tournamentId={tournamentId} />
         <span>/</span>
         <span className="text-gray-800 font-medium">{stage.name}</span>
       </div>
@@ -93,7 +94,7 @@ export default function BarragePage() {
                 + Ajouter un match
               </button>
               <button className="btn-primary bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={() => lockBarragePhase(tournamentId!, contestId!, stageId!)}
+                onClick={() => lockBarragePhase(tournamentId, contestId, stageId)}
                 disabled={!allScored}
                 title={!allScored ? 'Tous les scores doivent être saisis avant de clôturer' : undefined}>
                 ✅ Terminer le barrage
@@ -102,7 +103,7 @@ export default function BarragePage() {
           )}
           {stage.status === 'done' && (
             <button className="btn-secondary"
-              onClick={() => unlockBarragePhase(tournamentId!, contestId!, stageId!)}>
+              onClick={() => unlockBarragePhase(tournamentId, contestId, stageId)}>
               🔓 Rouvrir le barrage
             </button>
           )}
@@ -143,7 +144,7 @@ export default function BarragePage() {
                       <input type="number" min="0" max={stage.maxScore} value={scoreA}
                         onChange={e => setScoreA(e.target.value)}
                         className={`w-12 text-center border rounded px-1 py-0.5 text-sm ${inputError ? 'border-red-400 bg-red-50' : ''}`}
-                        autoFocus />
+                        />
                       <span className="text-gray-400 font-bold">—</span>
                       <input type="number" min="0" max={stage.maxScore} value={scoreB}
                         onChange={e => setScoreB(e.target.value)}
@@ -158,7 +159,10 @@ export default function BarragePage() {
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 cursor-pointer"
-                    onClick={stage.status === 'done' ? undefined : () => startEdit(bout.id, bout.scoreA, bout.scoreB)}>
+                    role="button"
+                    tabIndex={stage.status === 'done' ? -1 : 0}
+                    onClick={stage.status === 'done' ? undefined : () => startEdit(bout.id, bout.scoreA, bout.scoreB)}
+                    onKeyDown={stage.status === 'done' ? undefined : (e) => { if (e.key === 'Enter' || e.key === ' ') startEdit(bout.id, bout.scoreA, bout.scoreB) }}>
                     <span className={`text-sm flex-1 text-right ${bout.resultA === 'V' ? 'font-bold text-green-700' : 'text-gray-700'}`}>
                       {fencerName(bout.fencerAId)}
                     </span>
@@ -184,8 +188,8 @@ export default function BarragePage() {
             <h2 className="text-lg font-bold text-gray-800">Ajouter un match de barrage</h2>
             <form onSubmit={handleAddBout} className="space-y-3">
               <div>
-                <label className="label">Tireur A</label>
-                <select className="input" value={boutFencerA} onChange={e => setBoutFencerA(e.target.value)} required autoFocus>
+                <label className="label" htmlFor="barrage-fencer-a">Tireur A</label>
+                <select id="barrage-fencer-a" className="input" value={boutFencerA} onChange={e => setBoutFencerA(e.target.value)} required>
                   <option value="">— Sélectionner —</option>
                   {presentFencers.map(f => (
                     <option key={f.id} value={f.id}>{f.lastName.toUpperCase()} {f.firstName}</option>
@@ -193,8 +197,8 @@ export default function BarragePage() {
                 </select>
               </div>
               <div>
-                <label className="label">Tireur B</label>
-                <select className="input" value={boutFencerB} onChange={e => setBoutFencerB(e.target.value)} required>
+                <label className="label" htmlFor="barrage-fencer-b">Tireur B</label>
+                <select id="barrage-fencer-b" className="input" value={boutFencerB} onChange={e => setBoutFencerB(e.target.value)} required>
                   <option value="">— Sélectionner —</option>
                   {presentFencers.filter(f => f.id !== boutFencerA).map(f => (
                     <option key={f.id} value={f.id}>{f.lastName.toUpperCase()} {f.firstName}</option>
