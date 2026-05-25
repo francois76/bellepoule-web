@@ -643,6 +643,11 @@ function PoolScoreSheet({ pool, stage, participantMap, contest, tournament, refe
   }
 
   // ── Poule ouverte : format liste (à remplir à la main) ───────
+  // Pour les grosses poules (>24 matchs), on force un saut de page avant la liste
+  // afin que le header du <thead> apparaisse en haut d'une nouvelle page et non
+  // en plein milieu de la page 1 (où header+grille se trouvent déjà).
+  const needsPageBreak = pool.bouts.length > 24
+
   return (
     <div className="pool-sheet">
       {/* En-tête */}
@@ -708,8 +713,21 @@ function PoolScoreSheet({ pool, stage, participantMap, contest, tournament, refe
         </table>
       </div>
 
-      <table className="pool-bout-list" style={{ marginTop: '8px' }}>
+      <table className={`pool-bout-list${needsPageBreak ? ' pool-bout-list--break' : ''}`} style={needsPageBreak ? {} : { marginTop: '8px' }}>
         <thead>
+          {needsPageBreak && (
+          <tr className="pbl-repeat-header">
+            <td colSpan={4}>
+              <div className="pool-sheet-title">
+                <h3>Poule {pool.number} — {stage.name}</h3>
+                <p className="pool-sheet-competition">{contest.name} · {fullLabel}</p>
+                {(dateLabel || locationLabel) && (
+                  <p className="pool-sheet-meta">{[dateLabel, locationLabel].filter(Boolean).join(' · ')}</p>
+                )}
+              </div>
+            </td>
+          </tr>
+          )}
           <tr>
             <th className="pbl-num">Match</th>
             <th className="pbl-fencer">{contest.isTeamEvent ? 'Équipe' : 'Tireur'}</th>

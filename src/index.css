@@ -198,6 +198,15 @@ body {
   color: #333;
 }
 .pool-bout-list .pbl-fencer { width: 37%; }
+.pool-bout-list--break {
+  break-before: page;
+}
+.pool-bout-list .pbl-repeat-header td {
+  background: white;
+  padding: 5px 5px 6px;
+  text-align: left;
+  border: none;
+}
 .pool-bout-list .pbl-fencer-a { text-align: right; }
 .pool-bout-list .pbl-fencer-b { text-align: left; }
 .pool-bout-list .pbl-n {
