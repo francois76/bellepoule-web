@@ -337,6 +337,7 @@ export default function PoolsPage() {
   const eligibleLatecomers = getEligibleLatecomers(contest, allocatedIds)
 
   function openAllocateModal() {
+    if (!contest) return
     const { defaultCount, defaultSize, seedingBalanced: balanced } = computeDefaultAllocation(contest, stageId, presentCount)
     setPoolCountInput(String(defaultCount))
     setPoolSizeInput(String(defaultSize))
