@@ -593,7 +593,6 @@ export const useStore = create<AppState>((set, get) => ({
           ...s,
           pools: (s as PoolPhase).pools.map(p => {
             if (p.id !== poolId) return p
-            const poolMaxScore = (s as PoolPhase).maxScore
             return {
               ...p,
               bouts: p.bouts.map(b => {
@@ -601,7 +600,6 @@ export const useStore = create<AppState>((set, get) => ({
                 // FIE art. t.93 : victoire = atteindre le score max OU avoir
                 // le plus de touches quand le temps expire (résultat "à la montre").
                 // resultA/B dépend uniquement de qui a plus de touches.
-                void poolMaxScore
                 const resultA: MatchResult = scoreA > scoreB ? 'V' : 'D'
                 const resultB: MatchResult = scoreB > scoreA ? 'V' : 'D'
                 return { ...b, scoreA, scoreB, resultA, resultB } as PoolBout
@@ -744,8 +742,9 @@ export const useStore = create<AppState>((set, get) => ({
       ...pool,
       bouts: pool.bouts.map(bout => {
         // Random: winner gets maxScore, loser gets 0..maxScore-1
-        const aWins = Math.random() < 0.5
-        const loserScore = Math.floor(Math.random() * maxScore)
+        const [r1, r2] = crypto.getRandomValues(new Uint8Array(2))
+        const aWins = r1 < 128
+        const loserScore = Math.floor(r2 / 256 * maxScore)
         const sa = aWins ? maxScore : loserScore
         const sb = aWins ? loserScore : maxScore
         const resultA: PoolBout['resultA'] = aWins ? 'V' : 'D'
@@ -917,8 +916,9 @@ export const useStore = create<AppState>((set, get) => ({
         const unscored = bouts.filter(b => b.round === round && b.fencerAId && b.fencerBId && !b.winnerId)
         if (unscored.length === 0) break
         const bout = unscored[0]
-        const aWins = Math.random() < 0.5
-        const loserScore = Math.floor(Math.random() * maxScore)
+        const [r1, r2] = crypto.getRandomValues(new Uint8Array(2))
+        const aWins = r1 < 128
+        const loserScore = Math.floor(r2 / 256 * maxScore)
         const sa = aWins ? maxScore : loserScore
         const sb = aWins ? loserScore : maxScore
         bouts = advanceBracket(bouts, bout.id, sa, sb, maxScore)

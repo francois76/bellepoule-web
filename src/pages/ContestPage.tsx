@@ -63,7 +63,7 @@ function scoreHint(category: string | undefined, phase: 'pool' | 'tableau'): str
 
 export default function ContestPage() {
   const { tournamentId = '', contestId = '' } = useParams<{ tournamentId: string; contestId: string }>()
-  const { tournaments, addPoolPhase, addTableauPhase, addBarragePhase, updateContest, removeStage } = useStore()
+  const { tournaments, loaded, addPoolPhase, addTableauPhase, addBarragePhase, updateContest, removeStage } = useStore()
   const navigate = useNavigate()
   const tournament = tournaments.find(t => t.id === tournamentId)
   const contest = tournament?.contests.find(c => c.id === contestId)
@@ -82,6 +82,8 @@ export default function ContestPage() {
   // ── Paramètres de compétition ──────────────────────────────────────────────
   const [settingsModal, setSettingsModal] = useState(false)
 
+  if (!loaded) return <div className="p-4 text-gray-500">Chargement…</div>
+
   if (!tournament || !contest) return <div className="text-red-500">Compétition introuvable</div>
 
   const displayConfig = contest.displayConfig ?? DEFAULT_DISPLAY_CONFIG
@@ -98,7 +100,7 @@ export default function ContestPage() {
     setPoolModal(true)
   }
 
-  async function handleCreatePool(e: React.FormEvent) {
+  async function handleCreatePool(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault()
     await addPoolPhase(
       tournamentId, contestId,
@@ -135,7 +137,7 @@ export default function ContestPage() {
     setTableauModal(true)
   }
 
-  async function handleCreateTableau(e: React.FormEvent) {
+  async function handleCreateTableau(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault()
     const size = parseInt(tableauForm.size) as TableauSize
     await addTableauPhase(
@@ -159,7 +161,7 @@ export default function ContestPage() {
     setBarrageModal(true)
   }
 
-  async function handleCreateBarrage(e: React.FormEvent) {
+  async function handleCreateBarrage(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault()
     await addBarragePhase(
       tournamentId, contestId,
@@ -210,9 +212,10 @@ export default function ContestPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-800">{contest.name}</h1>
           <p className="text-gray-500 text-sm mt-1">
-            {contest.isTeamEvent
-              ? `${contest.teams.length} équipe${contest.teams.length !== 1 ? 's' : ''}`
-              : `${contest.fencers.length} tireur${contest.fencers.length !== 1 ? 's' : ''} inscrits · ${presentCount} présent${presentCount !== 1 ? 's' : ''}`}
+            {(() => {
+              if (contest.isTeamEvent) return `${contest.teams.length} équipe${contest.teams.length !== 1 ? 's' : ''}`
+              return `${contest.fencers.length} tireur${contest.fencers.length !== 1 ? 's' : ''} inscrits · ${presentCount} présent${presentCount !== 1 ? 's' : ''}`
+            })()}
             {contest.category && ` · ${contest.category}`}
           </p>
           {(contest.organizer || contest.location || contest.date) && (
@@ -531,7 +534,7 @@ export default function ContestPage() {
   )
 }
 
-function ActionCard({ icon, label, sub, onClick }: { icon: string; label: string; sub: string; onClick: () => void }) {
+function ActionCard({ icon, label, sub, onClick }: Readonly<{ icon: string; label: string; sub: string; onClick: () => void }>) {
   return (
     <button onClick={onClick}
       className="card text-left hover:shadow-md transition-shadow hover:border-blue-300 border border-gray-200">
@@ -542,7 +545,7 @@ function ActionCard({ icon, label, sub, onClick }: { icon: string; label: string
   )
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status }: Readonly<{ status: string }>) {
   const colors: Record<string, string> = {
     pending: 'bg-yellow-100 text-yellow-700',
     running: 'bg-blue-100 text-blue-700',

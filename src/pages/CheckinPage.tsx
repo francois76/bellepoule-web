@@ -18,6 +18,7 @@ export default function CheckinPage() {
   const { tournamentId = '', contestId = '' } = useParams<{ tournamentId: string; contestId: string }>()
   const {
     tournaments,
+    loaded,
     addFencer, updateFencer, removeFencer,
     setPresence, setTeamPresence,
     addTeam, updateTeam, removeTeam,
@@ -50,6 +51,8 @@ export default function CheckinPage() {
       editingTeamRowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     }
   }, [editingTeamId])
+
+  if (!loaded) return <div className="p-4 text-gray-500">Chargement…</div>
 
   if (!tournament || !contest) return <div className="text-red-500">Compétition introuvable</div>
 
@@ -87,7 +90,8 @@ export default function CheckinPage() {
     if (a == null && b == null) return 0
     if (a == null) return 1
     if (b == null) return -1
-    const r = a < b ? -1 : a > b ? 1 : 0
+    let r: number
+    if (a < b) { r = -1 } else if (a > b) { r = 1 } else { r = 0 }
     return dir === 'asc' ? r : -r
   }
 
@@ -139,7 +143,7 @@ export default function CheckinPage() {
     return null
   }
 
-  async function handleAdd(e: React.FormEvent) {
+  async function handleAdd(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault()
     const err = validateFencer(form)
     if (err) return alert(err)
@@ -172,7 +176,7 @@ export default function CheckinPage() {
     })
   }
 
-  async function handleSaveFencer(e: React.FormEvent, fencer: Fencer) {
+  async function handleSaveFencer(e: React.SubmitEvent<HTMLFormElement>, fencer: Fencer) {
     e.preventDefault()
     const err = validateFencer(editFencerForm)
     if (err) return alert(err)
@@ -191,7 +195,7 @@ export default function CheckinPage() {
 
   // ── Team add ──────────────────────────────────────────────────────────────
 
-  async function handleAddTeam(e: React.FormEvent) {
+  async function handleAddTeam(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!teamForm.name.trim()) return
     await addTeam(tournamentId, contestId, {
@@ -218,27 +222,27 @@ export default function CheckinPage() {
     })
   }
 
-  function handleSaveTeam(e: React.FormEvent, team: Team) {
+  function handleSaveTeam(e: React.SubmitEvent<HTMLFormElement>, team: Team) {
     e.preventDefault()
     if (!contest) return
     if (!editTeamForm.name.trim()) return
-      updateTeam(tournamentId, contestId, {
+    let initialRank: number | undefined
+    if (editTeamForm.rankingMode === 'manual' && editTeamForm.initialRank) {
+      initialRank = parseInt(editTeamForm.initialRank)
+    } else if (editTeamForm.rankingMode === 'auto') {
+      const memberRanks = editTeamForm.fencerIds
+        .map(id => contest.fencers.find(f => f.id === id)?.initialRank ?? 99999)
+        .sort((a, b) => a - b)
+      const n = Math.min(3, memberRanks.length)
+      const sum = memberRanks.slice(0, n).reduce((s, r) => s + r, 0)
+      initialRank = n > 0 && sum < 99999 * n ? sum : undefined
+    }
+    updateTeam(tournamentId, contestId, {
       ...team,
       name: editTeamForm.name.trim(),
       club: editTeamForm.club.trim() || undefined,
       rankingMode: editTeamForm.rankingMode,
-      initialRank: editTeamForm.rankingMode === 'manual' && editTeamForm.initialRank
-        ? parseInt(editTeamForm.initialRank)
-        : editTeamForm.rankingMode === 'auto'
-          ? (() => {
-              const memberRanks = editTeamForm.fencerIds
-                .map(id => contest.fencers.find(f => f.id === id)?.initialRank ?? 99999)
-                .sort((a, b) => a - b)
-              const n = Math.min(3, memberRanks.length)
-              const sum = memberRanks.slice(0, n).reduce((s, r) => s + r, 0)
-              return n > 0 && sum < 99999 * n ? sum : undefined
-            })()
-          : undefined,
+      initialRank,
       fencerIds: editTeamForm.fencerIds,
     }).then(() => setEditingTeamId(null))
   }
@@ -682,9 +686,11 @@ export default function CheckinPage() {
         <div className="flex-1 min-h-0 card p-0 overflow-hidden flex flex-col">
           {filtered.length === 0 ? (
             <p className="text-center text-gray-400 py-10 m-auto">
-              {contest.fencers.length === 0
-                ? (contest.isTeamEvent ? 'Aucun membre inscrit' : 'Aucun tireur inscrit')
-                : 'Aucun résultat pour cette recherche'}
+              {(() => {
+                if (contest.fencers.length !== 0) return 'Aucun résultat pour cette recherche'
+                if (contest.isTeamEvent) return 'Aucun membre inscrit'
+                return 'Aucun tireur inscrit'
+              })()}
             </p>
           ) : (
             <div className="flex-1 min-h-0 overflow-y-auto">
@@ -790,7 +796,7 @@ function toggleTeamMember(fencerId: string, current: string[], setter: (ids: str
   setter(current.includes(fencerId) ? current.filter(id => id !== fencerId) : [...current, fencerId])
 }
 
-function TeamMemberPicker({ fencerIds, onChange, contest, editingTeamId }: { fencerIds: string[]; onChange: (ids: string[]) => void; contest: import('../types').Contest; editingTeamId: string | null }) {
+function TeamMemberPicker({ fencerIds, onChange, contest, editingTeamId }: Readonly<{ fencerIds: string[]; onChange: (ids: string[]) => void; contest: import('../types').Contest; editingTeamId: string | null }>) {
   const visible = contest.fencers.filter(f =>
     fencerIds.includes(f.id) ||
     !contest.teams.some(t => t.fencerIds.includes(f.id) && t.id !== editingTeamId)

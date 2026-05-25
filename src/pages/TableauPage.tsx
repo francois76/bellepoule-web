@@ -24,7 +24,7 @@ function roundLabelShort(round: number): string {
 
 export default function TableauPage() {
   const { tournamentId = '', contestId = '', stageId = '' } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
-  const { tournaments, setTableauBoutScore, lockTableauPhase, unlockTableauPhase, lockTableauRound, unlockTableauRound, fillRandomTableauBouts } = useStore()
+  const { tournaments, loaded, setTableauBoutScore, lockTableauPhase, unlockTableauPhase, lockTableauRound, unlockTableauRound, fillRandomTableauBouts } = useStore()
   const tournament = tournaments.find(t => t.id === tournamentId)
   const contest = tournament?.contests.find(c => c.id === contestId)
   const stage = contest?.stages.find(s => s.id === stageId) as TableauPhase | undefined
@@ -34,6 +34,8 @@ export default function TableauPage() {
   const [scoreB, setScoreB] = useState('')
   const [printingRound, setPrintingRound] = useState<number | null>(null)
   const [expandedRounds, setExpandedRounds] = useState<Set<number> | null>(null)
+
+  if (!loaded) return <div className="p-4 text-gray-500">Chargement…</div>
 
   if (!tournament || !contest || !stage || stage.type !== 'tableau') return <div className="text-red-500">Tableau introuvable</div>
 
@@ -57,7 +59,7 @@ export default function TableauPage() {
   // Consolation bracket IDs and their labels
   const consolationBracketIds = Array.from(new Set(stage.bouts.filter(b => b.bracket?.startsWith('cons-from-')).map(b => b.bracket as string)))
   function consolationLabel(bracketId: string): string {
-    const match = bracketId.match(/cons-from-(\d+)/)
+    const match = /cons-from-(\d+)/.exec(bracketId)
     if (!match) return bracketId
     const mainR = parseInt(match[1])
     if (mainR === 8) return 'Places 5–8'
@@ -131,6 +133,27 @@ export default function TableauPage() {
     }
   }
 
+  function renderConsBout(bout: TableauBout, stage: TableauPhase) {
+    return (
+      <BracketBout key={bout.id}
+        bout={bout}
+        nameA={fencerName(bout.fencerAId)}
+        nameB={fencerName(bout.fencerBId)}
+        maxScore={stage.maxScore}
+        isEditing={editingBout === bout.id}
+        scoreAInput={scoreA}
+        scoreBInput={scoreB}
+        onScoreAChange={setScoreA}
+        onScoreBChange={setScoreB}
+        onEdit={() => startEdit(bout)}
+        onSave={() => saveBout(bout.id)}
+        onCancel={() => setEditingBout(null)}
+        onQuickScore={(sa, sb) => quickSaveBout(bout.id, sa, sb)}
+        roundLocked={stage.status === 'done'}
+      />
+    )
+  }
+
   return (
     <div className="space-y-5">
       {/* Override @page to landscape for tableau printing, with extra bottom margin for browser footer */}
@@ -154,7 +177,7 @@ export default function TableauPage() {
           <div className="flex gap-3 mt-1 text-xs text-gray-500">
             <span>Score max : <strong className="text-gray-700">{stage.maxScore}</strong></span>
             <span>Tableau de <strong className="text-gray-700">{stage.size}</strong></span>
-            {(stage.fencedPlaces === 'third_place' || stage.hasThirdPlace) && <span className="text-gray-700">· 3e place</span>}
+            {(stage.fencedPlaces === 'third_place' || stage.fencedPlaces !== 'none') && <span className="text-gray-700">· 3e place</span>}
             {stage.fencedPlaces === 'all_places' && <span className="text-orange-700">· Toutes les places</span>}
           </div>
         </div>
@@ -192,7 +215,7 @@ export default function TableauPage() {
         {rounds.map(round => {
           // 3rd place bout lives at round=4 boutIndex=2 but is displayed in the "Finales" section
           const isFinalesSection = round === 2
-          const thirdPlaceBout = isFinalesSection && (stage.fencedPlaces === 'third_place' || (stage.fencedPlaces === undefined && stage.hasThirdPlace))
+          const thirdPlaceBout = isFinalesSection && stage.fencedPlaces === 'third_place'
             ? stage.bouts.find(b => b.round === 4 && b.boutIndex === 2)
             : undefined
 
@@ -201,11 +224,16 @@ export default function TableauPage() {
             .filter(b => b.round === round && !(round === 4 && b.boutIndex === 2))
             .sort((a, b) => a.boutIndex - b.boutIndex)
 
-          const label = round === 2
-            ? ((stage.fencedPlaces === 'third_place' || stage.fencedPlaces === 'all_places' || (stage.fencedPlaces === undefined && stage.hasThirdPlace)) ? 'Finales' : 'Finale')
-            : round === 4 ? 'Demi-finales'
-            : round === 8 ? 'Quarts de finale'
-            : `Tableau de ${round}`
+          let label: string
+          if (round === 2) {
+            label = (stage.fencedPlaces === 'third_place' || stage.fencedPlaces === 'all_places') ? 'Finales' : 'Finale'
+          } else if (round === 4) {
+            label = 'Demi-finales'
+          } else if (round === 8) {
+            label = 'Quarts de finale'
+          } else {
+            label = `Tableau de ${round}`
+          }
           const isActive = round === activeRound
           const isLocked = lockedRounds.includes(round)
           const prevRoundOpen = rounds.includes(round * 2) && !lockedRounds.includes(round * 2)
@@ -246,7 +274,11 @@ export default function TableauPage() {
             <div key={round}>
               <div className="flex items-center gap-2 mb-3 flex-wrap">
                 <button
-                  className={`flex items-center gap-2 font-semibold text-lg text-left hover:opacity-80 transition-opacity ${isActive ? 'text-blue-700' : isLocked ? 'text-gray-400' : 'text-gray-600'}`}
+                  className={(() => {
+                    let textColor = 'text-gray-600'
+                    if (isActive) { textColor = 'text-blue-700' } else if (isLocked) { textColor = 'text-gray-400' }
+                    return `flex items-center gap-2 font-semibold text-lg text-left hover:opacity-80 transition-opacity ${textColor}`
+                  })()}
                   onClick={() => toggleRound(round)}
                 >
                   <span className="text-sm">{isExpanded ? '▾' : '▸'}</span>
@@ -324,7 +356,8 @@ export default function TableauPage() {
                   const roundBouts = consBouts
                     .filter(b => b.round === consRound && !(consRound === 4 && b.boutIndex === 2))
                     .sort((a, b) => a.boutIndex - b.boutIndex)
-                  const consLabel = isConsFinale ? 'Finale' : consRound === 4 ? 'Demi-finales' : `T${consRound}`
+                  let consLabel: string
+                  if (isConsFinale) { consLabel = 'Finale' } else if (consRound === 4) { consLabel = 'Demi-finales' } else { consLabel = `T${consRound}` }
                   return (
                     <div key={consRound}>
                       <p className="text-xs font-semibold uppercase tracking-wide text-orange-600 mb-2">{consLabel}</p>
@@ -334,69 +367,20 @@ export default function TableauPage() {
                             <div>
                               <p className="text-xs text-orange-500 mb-1">Petite finale</p>
                               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                                <BracketBout key={thirdPlace.id}
-                                  bout={thirdPlace}
-                                  nameA={fencerName(thirdPlace.fencerAId)}
-                                  nameB={fencerName(thirdPlace.fencerBId)}
-                                  maxScore={stage.maxScore}
-                                  isEditing={editingBout === thirdPlace.id}
-                                  scoreAInput={scoreA}
-                                  scoreBInput={scoreB}
-                                  onScoreAChange={setScoreA}
-                                  onScoreBChange={setScoreB}
-                                  onEdit={() => startEdit(thirdPlace)}
-                                  onSave={() => saveBout(thirdPlace.id)}
-                                  onCancel={() => setEditingBout(null)}
-                                  onQuickScore={(sa, sb) => quickSaveBout(thirdPlace.id, sa, sb)}
-                                  roundLocked={stage.status === 'done'}
-                                />
+                                {renderConsBout(thirdPlace,stage)}
                               </div>
                             </div>
                           ) : null}
                           <div>
                             <p className="text-xs text-orange-500 mb-1">Finale</p>
                             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                              {roundBouts.map(bout => (
-                                <BracketBout key={bout.id}
-                                  bout={bout}
-                                  nameA={fencerName(bout.fencerAId)}
-                                  nameB={fencerName(bout.fencerBId)}
-                                  maxScore={stage.maxScore}
-                                  isEditing={editingBout === bout.id}
-                                  scoreAInput={scoreA}
-                                  scoreBInput={scoreB}
-                                  onScoreAChange={setScoreA}
-                                  onScoreBChange={setScoreB}
-                                  onEdit={() => startEdit(bout)}
-                                  onSave={() => saveBout(bout.id)}
-                                  onCancel={() => setEditingBout(null)}
-                                  onQuickScore={(sa, sb) => quickSaveBout(bout.id, sa, sb)}
-                                  roundLocked={stage.status === 'done'}
-                                />
-                              ))}
+                              {roundBouts.map(bout => renderConsBout(bout,stage))}
                             </div>
                           </div>
                         </div>
                       ) : (
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                          {roundBouts.map(bout => (
-                            <BracketBout key={bout.id}
-                              bout={bout}
-                              nameA={fencerName(bout.fencerAId)}
-                              nameB={fencerName(bout.fencerBId)}
-                              maxScore={stage.maxScore}
-                              isEditing={editingBout === bout.id}
-                              scoreAInput={scoreA}
-                              scoreBInput={scoreB}
-                              onScoreAChange={setScoreA}
-                              onScoreBChange={setScoreB}
-                              onEdit={() => startEdit(bout)}
-                              onSave={() => saveBout(bout.id)}
-                              onCancel={() => setEditingBout(null)}
-                              onQuickScore={(sa, sb) => quickSaveBout(bout.id, sa, sb)}
-                              roundLocked={stage.status === 'done'}
-                            />
-                          ))}
+                          {roundBouts.map(bout => renderConsBout(bout,stage))}
                         </div>
                       )}
                     </div>
@@ -437,11 +421,12 @@ type PrintProps = {
 function printHeader(stage: TableauPhase, contest: PrintProps['contest'], tournament: PrintProps['tournament']) {
   const weaponLabel = WEAPON_LABEL[contest.weapon] ?? contest.weapon
   const genderLabel = GENDER_LABEL[contest.gender] ?? contest.gender
-  const dateLabel = contest.date
-    ? new Date(contest.date).toLocaleDateString('fr-FR')
-    : tournament.startDate
-      ? new Date(tournament.startDate).toLocaleDateString('fr-FR')
-      : ''
+  let dateLabel = ''
+  if (contest.date) {
+    dateLabel = new Date(contest.date).toLocaleDateString('fr-FR')
+  } else if (tournament.startDate) {
+    dateLabel = new Date(tournament.startDate).toLocaleDateString('fr-FR')
+  }
   const locationLabel = contest.location ?? tournament.location ?? ''
   const meta = [weaponLabel, genderLabel, contest.category].filter(Boolean).join(' · ')
   const detail = [dateLabel, locationLabel].filter(Boolean).join(' — ')
@@ -458,6 +443,53 @@ function printHeader(stage: TableauPhase, contest: PrintProps['contest'], tourna
 }
 
 // ─── Feuilles de match (tableau ouvert) ──────────────────────────────────────
+
+function renderTouchBoxes(touchCount: number) {
+  return Array.from({ length: touchCount }, (_, j) => (
+    <div key={j} className="ms-touch">{j + 1}</div>
+  ))
+}
+
+function renderMatchSheet(
+  bout: import('../types').TableauBout,
+  allBouts: import('../types').TableauBout[],
+  fencerName: (id?: string) => string,
+  touchCount: number,
+) {
+  const matchTotal = allBouts.filter(b => b.round === bout.round && b.fencerAId && b.fencerBId).length
+  return (
+    <div key={bout.id} className="match-sheet">
+      <div className="ms-header">
+        <span className="ms-round">{roundLabelFull(bout.round)}</span>
+        <span className="ms-num">Match {bout.boutIndex + 1}/{matchTotal}</span>
+      </div>
+      <div className="ms-info-row">
+        <span>Arbitre&#160;: ________________________________</span>
+        <span>Piste&#160;: ______</span>
+      </div>
+      <div className="ms-fencer-block">
+        <div className="ms-fencer">
+          <div className="ms-fencer-name">{fencerName(bout.fencerAId)}</div>
+          <div className="ms-score-box">{bout.scoreA !== undefined ? String(bout.scoreA) : ''}</div>
+        </div>
+        <div className="ms-touch-row">{renderTouchBoxes(touchCount)}</div>
+      </div>
+      <div className="ms-sep" />
+      <div className="ms-fencer-block">
+        <div className="ms-fencer">
+          <div className="ms-fencer-name">{fencerName(bout.fencerBId)}</div>
+          <div className="ms-score-box">{bout.scoreB !== undefined ? String(bout.scoreB) : ''}</div>
+        </div>
+        <div className="ms-touch-row">{renderTouchBoxes(touchCount)}</div>
+      </div>
+      <div style={{ marginTop: 6, fontSize: '7pt', color: '#555', display: 'flex', gap: 16 }}>
+        <span>Signature Arbitre&nbsp;: ___________________________</span>
+        <span>Signature Tireur&nbsp;A&nbsp;: ___________________________</span>
+        <span>Signature Tireur&nbsp;B&nbsp;: ___________________________</span>
+      </div>
+    </div>
+  )
+}
 
 function MatchSheetsPrint({ stage, fencerName, roundFilter }: PrintProps & { roundFilter?: number }) {
   // Real matches only (both fencers set = no BYEs), sorted first-round first
@@ -486,50 +518,7 @@ function MatchSheetsPrint({ stage, fencerName, roundFilter }: PrintProps & { rou
           <div key={pageIdx} className="match-print-page">
             {rows.map((row, rowIdx) => (
               <div key={rowIdx} className="match-sheets-row">
-                {row.map(bout => {
-                  const matchTotal = stage.bouts.filter(b => b.round === bout.round && b.fencerAId && b.fencerBId).length
-                  return (
-                    <div key={bout.id} className="match-sheet">
-                      <div className="ms-header">
-                        <span className="ms-round">{roundLabelFull(bout.round)}</span>
-                        <span className="ms-num">Match {bout.boutIndex + 1}/{matchTotal}</span>
-                      </div>
-                      <div className="ms-info-row">
-                        <span>Arbitre&#160;: ________________________________</span>
-                        <span>Piste&#160;: ______</span>
-                      </div>
-                      <div className="ms-fencer-block">
-                        <div className="ms-fencer">
-                          <div className="ms-fencer-name">{fencerName(bout.fencerAId)}</div>
-                          <div className="ms-score-box">{bout.scoreA !== undefined ? String(bout.scoreA) : ''}</div>
-                        </div>
-                        <div className="ms-touch-row">
-                          {Array.from({ length: touchCount }, (_, j) => (
-                            <div key={j} className="ms-touch">{j + 1}</div>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="ms-sep" />
-                      <div className="ms-fencer-block">
-                        <div className="ms-fencer">
-                          <div className="ms-fencer-name">{fencerName(bout.fencerBId)}</div>
-                          <div className="ms-score-box">{bout.scoreB !== undefined ? String(bout.scoreB) : ''}</div>
-                        </div>
-                        <div className="ms-touch-row">
-                          {Array.from({ length: touchCount }, (_, j) => (
-                            <div key={j} className="ms-touch">{j + 1}</div>
-                          ))}
-                        </div>
-                      </div>
-                      {/* Signature line */}
-                      <div style={{ marginTop: 6, fontSize: '7pt', color: '#555', display: 'flex', gap: 16 }}>
-                        <span>Signature Arbitre&nbsp;: ___________________________</span>
-                        <span>Signature Tireur&nbsp;A&nbsp;: ___________________________</span>
-                        <span>Signature Tireur&nbsp;B&nbsp;: ___________________________</span>
-                      </div>
-                    </div>
-                  )
-                })}
+                {row.map(bout => renderMatchSheet(bout, stage.bouts, fencerName, touchCount))}
               </div>
             ))}
           </div>
@@ -541,7 +530,7 @@ function MatchSheetsPrint({ stage, fencerName, roundFilter }: PrintProps & { rou
 
 // ─── Arbre du tableau (tableau terminé) ──────────────────────────────────────
 
-function BracketPrint({ stage, fencerName, contest, tournament }: PrintProps) {
+function BracketPrint({ stage, fencerName, contest, tournament }: Readonly<PrintProps>) {
   const rounds = Array.from(new Set(stage.bouts.map(b => b.round))).sort((a, b) => b - a)
 
   // slotH: height in px for one first-round match slot
@@ -555,7 +544,8 @@ function BracketPrint({ stage, fencerName, contest, tournament }: PrintProps) {
   const treeH = firstRoundCount * slotH
 
   // Adaptive column width based on bracket size
-  const colWidth = stage.size <= 8 ? 180 : stage.size <= 16 ? 165 : stage.size <= 32 ? 150 : stage.size <= 64 ? 130 : 110
+  let colWidth = 110
+  if (stage.size <= 8) { colWidth = 180 } else if (stage.size <= 16) { colWidth = 165 } else if (stage.size <= 32) { colWidth = 150 } else if (stage.size <= 64) { colWidth = 130 }
 
   return (
     <div>
@@ -658,7 +648,7 @@ const QuickPopup = ({ scores, colorClass, popupPos, handleQuick }: {
   </div>
 )
 
-function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBInput, onScoreAChange, onScoreBChange, onEdit, onSave, onCancel, onQuickScore, roundLocked }: {
+function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBInput, onScoreAChange, onScoreBChange, onEdit, onSave, onCancel, onQuickScore, roundLocked }: Readonly<{
   bout: TableauBout
   nameA: string
   nameB: string
@@ -673,7 +663,7 @@ function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, sco
   onCancel: () => void
   onQuickScore: (sa: number, sb: number) => void
   roundLocked: boolean
-}) {
+}>) {
   const [openSide, setOpenSide] = useState<'A' | 'B' | null>(null)
   const [popupPos, setPopupPos] = useState<{ top?: number; bottom?: number; left?: number; right?: number } | null>(null)
   const hasResult = bout.scoreA !== undefined && bout.scoreB !== undefined

@@ -15,10 +15,11 @@ const PALETTE = [
 ]
 
 function randomColor() {
-  return PALETTE[Math.floor(Math.random() * PALETTE.length)]
+  const idx = crypto.getRandomValues(new Uint8Array(1))[0] % PALETTE.length
+  return PALETTE[idx]
 }
 
-export function ContestBreadcrumb({ tournament, contest, tournamentId }: Props) {
+export function ContestBreadcrumb({ tournament, contest, tournamentId }: Readonly<Props>) {
   const navigate = useNavigate()
   const { updateContest } = useStore()
   const [open, setOpen] = useState(false)
@@ -29,8 +30,7 @@ export function ContestBreadcrumb({ tournament, contest, tournamentId }: Props) 
     if (!contest.color) {
       updateContest(tournamentId, { ...contest, color: randomColor() })
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contest.id])
+  }, [contest, tournamentId, updateContest])
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -178,9 +178,11 @@ export function ContestBreadcrumb({ tournament, contest, tournamentId }: Props) 
                     fontSize: '0.875rem',
                     cursor: 'pointer',
                     border: 'none',
-                    background: isCurrent
-                      ? (optColor ?? '#e5e7eb')
-                      : (optColor ? `${optColor}22` : 'transparent'),
+                    background: (() => {
+                      if (isCurrent) return optColor ?? '#e5e7eb'
+                      if (optColor) return `${optColor}22`
+                      return 'transparent'
+                    })(),
                     color: isCurrent && optColor ? '#fff' : '#1f2937',
                     borderLeft: optColor ? `4px solid ${optColor}` : '4px solid transparent',
                     transition: 'background 0.12s',

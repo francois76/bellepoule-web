@@ -10,7 +10,7 @@ export default function HomePage() {
   const [name, setName] = useState('')
   const [organizer, setOrganizer] = useState('')
 
-  async function handleCreate(e: React.FormEvent) {
+  async function handleCreate(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!name.trim()) return
     const t = await createTournament(name.trim(), organizer.trim() || undefined)

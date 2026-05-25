@@ -5,6 +5,8 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import jsxA11y from 'eslint-plugin-jsx-a11y'
 import tseslint from 'typescript-eslint'
+import sonarjs from 'eslint-plugin-sonarjs'
+import reactCompiler from 'eslint-plugin-react-compiler'
 
 export default tseslint.config(
   { ignores: ['dist'] },
@@ -17,6 +19,7 @@ export default tseslint.config(
       react.configs.flat.recommended,
       react.configs.flat['jsx-runtime'],
       jsxA11y.flatConfigs.recommended,
+      sonarjs.configs.recommended,
     ],
     languageOptions: {
       ecmaVersion: 2020,
@@ -29,9 +32,11 @@ export default tseslint.config(
     plugins: {
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
+      'react-compiler': reactCompiler,
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      'react-compiler/react-compiler': 'error',
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },

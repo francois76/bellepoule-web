@@ -5,9 +5,114 @@ import type { BarragePhase } from '../types'
 import { ContestBreadcrumb } from '../components/ContestBreadcrumb'
 import { BackArrow } from '../components/BackArrow'
 
+interface BoutItemProps {
+  bout: BarragePhase['bouts'][number]
+  editingBout: string | null
+  scoreA: string
+  scoreB: string
+  maxScore: number
+  stageDone: boolean
+  fencerName: (id: string) => string
+  setScoreA: (v: string) => void
+  setScoreB: (v: string) => void
+  onSave: (boutId: string) => void
+  onStartEdit: (boutId: string, sa?: number, sb?: number) => void
+  onCancelEdit: () => void
+}
+
+function computeInputError(scoreA: string, scoreB: string, maxScore: number): string | null {
+  const sa = parseInt(scoreA)
+  const sb = parseInt(scoreB)
+  if (isNaN(sa) || isNaN(sb)) return null
+  if (sa < 0 || sb < 0) return 'Score négatif impossible'
+  if (sa > maxScore || sb > maxScore) return `Score max : ${maxScore}`
+  if (sa === sb) return 'Égalité non autorisée en barrage'
+  return null
+}
+
+function renderBoutEditMode({
+  bout, scoreA, scoreB, maxScore, inputError,
+  fencerName, setScoreA, setScoreB, onSave, onCancelEdit,
+}: Readonly<{
+  bout: BarragePhase['bouts'][number]
+  scoreA: string; scoreB: string; maxScore: number; inputError: string | null
+  fencerName: (id: string) => string
+  setScoreA: (v: string) => void; setScoreB: (v: string) => void
+  onSave: (id: string) => void; onCancelEdit: () => void
+}>) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm font-medium flex-1 text-right">{fencerName(bout.fencerAId)}</span>
+        <input type="number" min="0" max={maxScore} value={scoreA}
+          onChange={e => setScoreA(e.target.value)}
+          className={`w-12 text-center border rounded px-1 py-0.5 text-sm ${inputError ? 'border-red-400 bg-red-50' : ''}`}
+          />
+        <span className="text-gray-400 font-bold">—</span>
+        <input type="number" min="0" max={maxScore} value={scoreB}
+          onChange={e => setScoreB(e.target.value)}
+          className={`w-12 text-center border rounded px-1 py-0.5 text-sm ${inputError ? 'border-red-400 bg-red-50' : ''}`} />
+        <span className="text-sm font-medium flex-1">{fencerName(bout.fencerBId)}</span>
+        <button className="btn-primary text-xs py-0.5 px-2 disabled:opacity-40"
+          onClick={() => onSave(bout.id)} disabled={!!inputError}>✓</button>
+        <button className="btn-secondary text-xs py-0.5 px-2"
+          onClick={onCancelEdit}>✕</button>
+      </div>
+      {inputError && <p className="text-xs text-red-600 text-center">{inputError}</p>}
+    </div>
+  )
+}
+
+function renderBoutViewMode({
+  bout, scored, stageDone, fencerName, onStartEdit,
+}: Readonly<{
+  bout: BarragePhase['bouts'][number]
+  scored: boolean; stageDone: boolean
+  fencerName: (id: string) => string
+  onStartEdit: (id: string, sa?: number, sb?: number) => void
+}>) {
+  return (
+    <div className="flex items-center gap-2 cursor-pointer"
+      role="button"
+      tabIndex={stageDone ? -1 : 0}
+      onClick={stageDone ? undefined : () => onStartEdit(bout.id, bout.scoreA, bout.scoreB)}
+      onKeyDown={stageDone ? undefined : (e) => { if (e.key === 'Enter' || e.key === ' ') onStartEdit(bout.id, bout.scoreA, bout.scoreB) }}>
+      <span className={`text-sm flex-1 text-right ${bout.resultA === 'V' ? 'font-bold text-green-700' : 'text-gray-700'}`}>
+        {fencerName(bout.fencerAId)}
+      </span>
+      <span className="text-sm font-mono font-bold text-gray-800 w-16 text-center">
+        {scored ? `${bout.scoreA} — ${bout.scoreB}` : '— —'}
+      </span>
+      <span className={`text-sm flex-1 ${bout.resultB === 'V' ? 'font-bold text-green-700' : 'text-gray-700'}`}>
+        {fencerName(bout.fencerBId)}
+      </span>
+      {!stageDone && <span className="text-gray-300 text-xs">✏️</span>}
+    </div>
+  )
+}
+
+function renderBoutItem({
+  bout, editingBout, scoreA, scoreB, maxScore, stageDone,
+  fencerName, setScoreA, setScoreB, onSave, onStartEdit, onCancelEdit,
+}: Readonly<BoutItemProps>) {
+  const scored = bout.scoreA !== undefined && bout.scoreB !== undefined
+  const isEditing = editingBout === bout.id
+  const inputError = isEditing ? computeInputError(scoreA, scoreB, maxScore) : null
+  return (
+    <div key={bout.id}
+      className={`rounded-lg border p-3 ${scored ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-200'}`}>
+      <div className="text-xs text-gray-400 mb-1">Match {bout.order}</div>
+      {isEditing
+        ? renderBoutEditMode({ bout, scoreA, scoreB, maxScore, inputError, fencerName, setScoreA, setScoreB, onSave, onCancelEdit })
+        : renderBoutViewMode({ bout, scored, stageDone, fencerName, onStartEdit })
+      }
+    </div>
+  )
+}
+
 export default function BarragePage() {
   const { tournamentId = '', contestId = '', stageId = '' } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
-  const { tournaments, addBarrageBout, setBarrageBoutScore, lockBarragePhase, unlockBarragePhase } = useStore()
+  const { tournaments, loaded, addBarrageBout, setBarrageBoutScore, lockBarragePhase, unlockBarragePhase } = useStore()
 
   const tournament = tournaments.find(t => t.id === tournamentId)
   const contest = tournament?.contests.find(c => c.id === contestId)
@@ -21,6 +126,8 @@ export default function BarragePage() {
   const [addBoutModal, setAddBoutModal] = useState(false)
   const [boutFencerA, setBoutFencerA] = useState('')
   const [boutFencerB, setBoutFencerB] = useState('')
+
+  if (!loaded) return <div className="p-4 text-gray-500">Chargement…</div>
 
   if (!tournament || !contest || !stage || stage.type !== 'barrage') {
     return <div className="text-red-500">Phase introuvable</div>
@@ -53,7 +160,7 @@ export default function BarragePage() {
     setScoreB('')
   }
 
-  async function handleAddBout(e: React.FormEvent) {
+  async function handleAddBout(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!boutFencerA || !boutFencerB || boutFencerA === boutFencerB) return
     await addBarrageBout(tournamentId, contestId, stageId, boutFencerA, boutFencerB)
@@ -120,64 +227,14 @@ export default function BarragePage() {
       ) : (
         <div className="card space-y-2">
           <h2 className="font-semibold text-gray-700 mb-3">Matchs de barrage</h2>
-          {stage.bouts.map(bout => {
-            const scored = bout.scoreA !== undefined && bout.scoreB !== undefined
-            const isEditing = editingBout === bout.id
-            const inputError = (() => {
-              if (!isEditing) return null
-              const sa = parseInt(scoreA)
-              const sb = parseInt(scoreB)
-              if (isNaN(sa) || isNaN(sb)) return null
-              if (sa < 0 || sb < 0) return 'Score négatif impossible'
-              if (sa > stage.maxScore || sb > stage.maxScore) return `Score max : ${stage.maxScore}`
-              if (sa === sb) return 'Égalité non autorisée en barrage'
-              return null
-            })()
-            return (
-              <div key={bout.id}
-                className={`rounded-lg border p-3 ${scored ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-200'}`}>
-                <div className="text-xs text-gray-400 mb-1">Match {bout.order}</div>
-                {isEditing ? (
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium flex-1 text-right">{fencerName(bout.fencerAId)}</span>
-                      <input type="number" min="0" max={stage.maxScore} value={scoreA}
-                        onChange={e => setScoreA(e.target.value)}
-                        className={`w-12 text-center border rounded px-1 py-0.5 text-sm ${inputError ? 'border-red-400 bg-red-50' : ''}`}
-                        />
-                      <span className="text-gray-400 font-bold">—</span>
-                      <input type="number" min="0" max={stage.maxScore} value={scoreB}
-                        onChange={e => setScoreB(e.target.value)}
-                        className={`w-12 text-center border rounded px-1 py-0.5 text-sm ${inputError ? 'border-red-400 bg-red-50' : ''}`} />
-                      <span className="text-sm font-medium flex-1">{fencerName(bout.fencerBId)}</span>
-                      <button className="btn-primary text-xs py-0.5 px-2 disabled:opacity-40"
-                        onClick={() => saveBout(bout.id)} disabled={!!inputError}>✓</button>
-                      <button className="btn-secondary text-xs py-0.5 px-2"
-                        onClick={() => setEditingBout(null)}>✕</button>
-                    </div>
-                    {inputError && <p className="text-xs text-red-600 text-center">{inputError}</p>}
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 cursor-pointer"
-                    role="button"
-                    tabIndex={stage.status === 'done' ? -1 : 0}
-                    onClick={stage.status === 'done' ? undefined : () => startEdit(bout.id, bout.scoreA, bout.scoreB)}
-                    onKeyDown={stage.status === 'done' ? undefined : (e) => { if (e.key === 'Enter' || e.key === ' ') startEdit(bout.id, bout.scoreA, bout.scoreB) }}>
-                    <span className={`text-sm flex-1 text-right ${bout.resultA === 'V' ? 'font-bold text-green-700' : 'text-gray-700'}`}>
-                      {fencerName(bout.fencerAId)}
-                    </span>
-                    <span className="text-sm font-mono font-bold text-gray-800 w-16 text-center">
-                      {scored ? `${bout.scoreA} — ${bout.scoreB}` : '— —'}
-                    </span>
-                    <span className={`text-sm flex-1 ${bout.resultB === 'V' ? 'font-bold text-green-700' : 'text-gray-700'}`}>
-                      {fencerName(bout.fencerBId)}
-                    </span>
-                    {stage.status !== 'done' && <span className="text-gray-300 text-xs">✏️</span>}
-                  </div>
-                )}
-              </div>
-            )
-          })}
+          {stage.bouts.map(bout => renderBoutItem({
+            bout, editingBout, scoreA, scoreB,
+            maxScore: stage.maxScore, stageDone: stage.status === 'done',
+            fencerName, setScoreA, setScoreB,
+            onSave: saveBout,
+            onStartEdit: startEdit,
+            onCancelEdit: () => setEditingBout(null),
+          }))}
         </div>
       )}
 

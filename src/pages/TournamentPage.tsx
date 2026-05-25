@@ -32,7 +32,7 @@ const DISPLAY_FIELD_LABELS: Record<string, string> = {
 
 export default function TournamentPage() {
   const { tournamentId = '' } = useParams<{ tournamentId: string }>()
-  const { tournaments, addContest, removeContest, addFencer, addReferee, addTeam, addPoolPhase } = useStore()
+  const { tournaments, loaded, addContest, removeContest, addFencer, addReferee, addTeam, addPoolPhase } = useStore()
   const navigate = useNavigate()
   const tournament = tournaments.find(t => t.id === tournamentId)
   const [creating, setCreating] = useState(false)
@@ -48,6 +48,8 @@ export default function TournamentPage() {
     minTeamSize: '3',
     displayConfig: DEFAULT_DISPLAY_CONFIG,
   })
+
+  if (!loaded) return <div className="p-4 text-gray-500">Chargement…</div>
 
   if (!tournament) return <div className="text-red-500">Tournoi introuvable</div>
 
@@ -107,7 +109,7 @@ export default function TournamentPage() {
     setForm(f => ({ ...f, [k]: v }))
   }
 
-  async function handleCreate(e: React.FormEvent) {
+  async function handleCreate(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!form.name.trim()) return
     const contest = await addContest(tournamentId, {
@@ -261,9 +263,10 @@ export default function TournamentPage() {
                     {c.isTeamEvent && ' · Par équipes'}
                   </p>
                   <p className="text-xs text-gray-400 mt-1">
-                    {c.isTeamEvent
-                      ? `${c.teams.length} équipe${c.teams.length !== 1 ? 's' : ''}`
-                      : `${c.fencers.filter(f => f.present).length}/${c.fencers.length} tireurs présents`}
+                    {(() => {
+                      if (c.isTeamEvent) return `${c.teams.length} équipe${c.teams.length !== 1 ? 's' : ''}`
+                      return `${c.fencers.filter(f => f.present).length}/${c.fencers.length} tireurs présents`
+                    })()}
                   </p>
                 </div>
                 <button className="text-gray-300 hover:text-red-500 transition-colors p-1"

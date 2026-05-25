@@ -19,7 +19,7 @@ export async function readFileText(file: File): Promise<string> {
   let encoding = 'utf-8'
 
   // XML encoding declaration: <?xml ... encoding="ISO-8859-1" ?>
-  const xmlEnc = peek.match(/encoding=["']([^"']+)["']/i)
+  const xmlEnc = /encoding=["']([^"']+)["']/i.exec(peek)
   if (xmlEnc) {
     encoding = xmlEnc[1].toLowerCase()
   }
@@ -121,8 +121,35 @@ export function importFFF(text: string): Fencer[] {
   return fencers
 }
 
-/**
- * Parse a FIE/BellePoule/cotcot XML contest file.
+function parseTireurElement(t: Element, isCotcot: boolean): { fencer: Fencer; equipe: string | null } {
+  const rankAttr = isCotcot ? t.getAttribute('Ranking') : t.getAttribute('Classement')
+  const statut = t.getAttribute('Statut')
+  const dob = t.getAttribute('DateNaissance') ?? ''
+  let dobParts: string[]
+  if (dob.includes('.')) { dobParts = dob.split('.') }
+  else if (dob.includes('/')) { dobParts = dob.split('/') }
+  else { dobParts = [] }
+  const isoBirthDate = dobParts.length === 3 ? `${dobParts[2]}-${dobParts[1].padStart(2, '0')}-${dobParts[0].padStart(2, '0')}` : undefined
+  const fencerId = t.getAttribute('REF') ?? t.getAttribute('ID') ?? nanoid()
+  const fencer: Fencer = {
+    id: fencerId,
+    lastName: t.getAttribute('Nom') ?? '',
+    firstName: t.getAttribute('Prenom') ?? '',
+    birthDate: isoBirthDate,
+    gender: (t.getAttribute('Sexe') === 'F' ? 'F' : 'M') as 'M' | 'F',
+    club: t.getAttribute('Club') ?? undefined,
+    country: t.getAttribute('Nation') ?? undefined,
+    licenceNumber: t.getAttribute('Licence') ?? undefined,
+    initialRank: rankAttr ? parseInt(rankAttr) || undefined : undefined,
+    present: statut !== 'F',
+    league: t.getAttribute('Ligue') ?? undefined,
+    region: t.getAttribute('Region') ?? undefined,
+  }
+  return { fencer, equipe: t.getAttribute('Equipe') }
+}
+
+
+/*
  * Supports root elements: CompetitionIndividuelle (cotcot), BaseCompetitionIndividuelle,
  * BaseCompetitionParEquipes (FIE XML), and Competition (internal format).
  * For team events (BaseCompetitionParEquipes / Equipe attr), builds Team[] from Equipe grouping.
@@ -147,31 +174,11 @@ export function importBellePouleXML(xmlText: string): Partial<Contest> & { fence
   const teamMap = new Map<string, string[]>()
 
   doc.querySelectorAll('Tireur').forEach(t => {
-    const rankAttr = isCotcot ? t.getAttribute('Ranking') : t.getAttribute('Classement')
-    const statut = t.getAttribute('Statut')
-    const dob = t.getAttribute('DateNaissance') ?? ''
-    const dobParts = dob.includes('.') ? dob.split('.') : dob.includes('/') ? dob.split('/') : []
-    const isoBirthDate = dobParts.length === 3 ? `${dobParts[2]}-${dobParts[1].padStart(2, '0')}-${dobParts[0].padStart(2, '0')}` : undefined
-    const fencerId = t.getAttribute('REF') ?? t.getAttribute('ID') ?? nanoid()
-    fencers.push({
-      id: fencerId,
-      lastName: t.getAttribute('Nom') ?? '',
-      firstName: t.getAttribute('Prenom') ?? '',
-      birthDate: isoBirthDate,
-      gender: (t.getAttribute('Sexe') === 'F' ? 'F' : 'M') as 'M' | 'F',
-      club: t.getAttribute('Club') ?? undefined,
-      country: t.getAttribute('Nation') ?? undefined,
-      licenceNumber: t.getAttribute('Licence') ?? undefined,
-      initialRank: rankAttr ? parseInt(rankAttr) || undefined : undefined,
-      present: statut !== 'F',
-      league: t.getAttribute('Ligue') ?? undefined,
-      region: t.getAttribute('Region') ?? undefined,
-    })
-    // Group by Equipe attribute for team events
-    const equipe = t.getAttribute('Equipe')
+    const { fencer, equipe } = parseTireurElement(t, isCotcot)
+    fencers.push(fencer)
     if (equipe) {
       const members = teamMap.get(equipe) ?? []
-      members.push(fencerId)
+      members.push(fencer.id)
       teamMap.set(equipe, members)
     }
   })
@@ -314,7 +321,7 @@ export function exportContestFFF(contest: Contest, fencers: Fencer[]): void {
     const rank = f.initialRank != null ? String(f.initialRank) : ''
     const points = ''  // not stored
 
-    // Format: NOM,Prenom,DD/MM/YYYY,sex,nation;region,ligue;licence,ligue,club,rank,points;
+    // NOM,Prenom,DD/MM/YYYY,sex,nation;region,ligue;licence,ligue,club,rank,points
     const personal = `${f.lastName},${f.firstName},${dob},${sex},${nation}`
     const regionPart = `${region},${ligue}`
     const clubPart = `${licence},${ligue},${club},${rank},${points}`

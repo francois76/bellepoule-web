@@ -3,12 +3,43 @@ import { useParams, Link } from 'react-router-dom'
 import { ContestBreadcrumb } from '../components/ContestBreadcrumb'
 import { BackArrow } from '../components/BackArrow'
 import { useStore } from '../store'
-import type { PoolPhase, PoolBout, Pool, Referee, FencerPoolStatus } from '../types'
+import type { PoolPhase, PoolBout, Pool, Referee, FencerPoolStatus, Fencer, Team } from '../types'
 import { DEFAULT_DISPLAY_CONFIG } from '../types'
 import { poolCountFromSize, poolSizeDescription } from '../logic/pools'
 
+type LiveStat = { v: number; m: number; td: number; tr: number; allFilled: boolean }
+type SwapCrit = 'club' | 'country' | 'league'
+
+function compareLiveStat(x: string, y: string, stats: Record<string, LiveStat>): number {
+  const sx = stats[x], sy = stats[y]
+  const rx = sx.m > 0 ? Math.floor(sx.v * 1000 / sx.m) : 0
+  const ry = sy.m > 0 ? Math.floor(sy.v * 1000 / sy.m) : 0
+  if (ry !== rx) return ry - rx
+  const ix = sx.td - sx.tr, iy = sy.td - sy.tr
+  if (iy !== ix) return iy - ix
+  return sy.td - sx.td
+}
+
+function applyBoutToStats(bout: PoolBout, a: LiveStat, b: LiveStat, maxScore: number): boolean {
+  if (bout.resultA === undefined) return false
+  if (bout.resultA === 'A') {
+    a.m++; b.m++
+    b.v++; b.td += maxScore; a.tr += maxScore
+  } else if (bout.resultB === 'A') {
+    a.m++; b.m++
+    a.v++; a.td += maxScore; b.tr += maxScore
+  } else {
+    a.m++; b.m++
+    a.td += bout.scoreA ?? 0; a.tr += bout.scoreB ?? 0
+    b.td += bout.scoreB ?? 0; b.tr += bout.scoreA ?? 0
+    if (bout.resultA === 'V') a.v++
+    if (bout.resultB === 'V') b.v++
+  }
+  return true
+}
+
 function computePoolLiveStats(pool: Pool, maxScore: number) {
-  const stats: Record<string, { v: number; m: number; td: number; tr: number; allFilled: boolean }> = {}
+  const stats: Record<string, LiveStat> = {}
   for (const fId of pool.fencerIds) {
     stats[fId] = { v: 0, m: 0, td: 0, tr: 0, allFilled: true }
   }
@@ -16,43 +47,258 @@ function computePoolLiveStats(pool: Pool, maxScore: number) {
     const a = stats[bout.fencerAId]
     const b = stats[bout.fencerBId]
     if (!a || !b) continue
-    if (bout.resultA === undefined) {
-      a.allFilled = false
-      b.allFilled = false
-      continue
-    }
-    if (bout.resultA === 'A') {
-      a.m++; b.m++
-      b.v++; b.td += maxScore; a.tr += maxScore
-    } else if (bout.resultB === 'A') {
-      a.m++; b.m++
-      a.v++; a.td += maxScore; b.tr += maxScore
-    } else {
-      a.m++; b.m++
-      a.td += bout.scoreA ?? 0; a.tr += bout.scoreB ?? 0
-      b.td += bout.scoreB ?? 0; b.tr += bout.scoreA ?? 0
-      if (bout.resultA === 'V') a.v++
-      if (bout.resultB === 'V') b.v++
-    }
+    const filled = applyBoutToStats(bout, a, b, maxScore)
+    if (!filled) { a.allFilled = false; b.allFilled = false }
   }
   const filled = pool.fencerIds.filter(fId => stats[fId]?.allFilled)
-  const sorted = [...filled].sort((x, y) => {
-    const sx = stats[x], sy = stats[y]
-    const rx = sx.m > 0 ? Math.floor(sx.v * 1000 / sx.m) : 0
-    const ry = sy.m > 0 ? Math.floor(sy.v * 1000 / sy.m) : 0
-    if (ry !== rx) return ry - rx
-    const ix = sx.td - sx.tr, iy = sy.td - sy.tr
-    if (iy !== ix) return iy - ix
-    return sy.td - sx.td
-  })
+  const sorted = [...filled].sort((x, y) => compareLiveStat(x, y, stats))
   const rankMap: Record<string, number> = {}
   sorted.forEach((fId, i) => { rankMap[fId] = i + 1 })
   return { stats, rankMap }
 }
 
+type ParticipantInfo = { name: string; club?: string; birthDate?: string; licenceNumber?: string }
+
+function buildParticipantMap(contest: import('../types').Contest): Record<string, ParticipantInfo> {
+  if (contest.isTeamEvent) {
+    return Object.fromEntries(contest.teams.map(t => [t.id, { name: t.name, club: t.club }]))
+  }
+  return Object.fromEntries(contest.fencers.map(f => [f.id, {
+    name: `${f.lastName.toUpperCase()} ${f.firstName}`,
+    club: f.club, birthDate: f.birthDate, licenceNumber: f.licenceNumber,
+  }]))
+}
+
+function getEligibleLatecomers(contest: import('../types').Contest, allocatedIds: Set<string>) {
+  if (contest.isTeamEvent) return contest.teams.filter(t => !allocatedIds.has(t.id))
+  return contest.fencers.filter(f => !allocatedIds.has(f.id))
+}
+
+function validateBoutScore(scoreA: string, scoreB: string, maxScore: number): { sa: number; sb: number } | null {
+  const sa = parseInt(scoreA)
+  const sb = parseInt(scoreB)
+  if (isNaN(sa) || isNaN(sb)) return null
+  if (sa > maxScore || sb > maxScore) return null
+  if (sa === sb) return null
+  return { sa, sb }
+}
+
+function onEscapeKey(handler: () => void) {
+  return (e: React.KeyboardEvent) => { if (e.key === 'Escape') handler() }
+}
+
+interface LatecomerModalProps {
+  readonly eligibleLatecomers: (Fencer | Team)[]
+  readonly latecomerFencerId: string
+  readonly setLatecomerFencerId: (v: string) => void
+  readonly onAdd: () => Promise<void>
+  readonly onClose: () => void
+}
+function LatecomerModal({ eligibleLatecomers, latecomerFencerId, setLatecomerFencerId, onAdd, onClose }: LatecomerModalProps) {
+  return (
+    <div className="print:hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+        <h2 className="text-lg font-bold text-gray-800">🕐 Ajouter un retardataire</h2>
+        <p className="text-sm text-gray-500">
+          Le retardataire sera ajouté à la <strong>plus petite poule</strong>.
+          Les assauts déjà joués sans lui seront marqués comme <em>absences</em> (ses adversaires passés reçoivent victoire + score max).
+        </p>
+        <div>
+          <label className="label" htmlFor="latecomer-fencer-select">Tireur retardataire</label>
+          <select id="latecomer-fencer-select" className="input" value={latecomerFencerId} onChange={e => setLatecomerFencerId(e.target.value)}>
+            <option value="">— Sélectionner —</option>
+            {eligibleLatecomers.map(p => (
+              <option key={p.id} value={p.id}>
+                {'lastName' in p ? `${p.lastName.toUpperCase()} ${p.firstName}` : p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex gap-2 pt-2">
+          <button type="button" className="btn-secondary flex-1" onClick={onClose}>Annuler</button>
+          <button type="button" className="btn-primary flex-1" disabled={!latecomerFencerId} onClick={onAdd}>Ajouter</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface AllocateModalProps {
+  readonly presentCount: number
+  readonly participantLabel: string
+  readonly isTeamEvent: boolean
+  readonly poolCountInput: string
+  readonly setPoolCountInput: (v: string) => void
+  readonly poolSizeInput: string
+  readonly setPoolSizeInput: (v: string) => void
+  readonly seedingBalanced: boolean
+  readonly setSeedingBalanced: (v: boolean) => void
+  readonly swapCriteria: SwapCrit[]
+  readonly setSwapCriteria: React.Dispatch<React.SetStateAction<SwapCrit[]>>
+  readonly onSubmit: (e: React.SubmitEvent<HTMLFormElement>) => void
+  readonly onClose: () => void
+}
+function AllocateModal({ presentCount, participantLabel, isTeamEvent, poolCountInput, setPoolCountInput, poolSizeInput, setPoolSizeInput, seedingBalanced, setSeedingBalanced, swapCriteria, setSwapCriteria, onSubmit, onClose }: AllocateModalProps) {
+  function toggleSwapCrit(crit: SwapCrit, checked: boolean) {
+    setSwapCriteria(prev => checked ? [...prev, crit] : prev.filter(c => c !== crit))
+  }
+  return (
+    <div className="print:hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+        <h2 className="text-lg font-bold text-gray-800">Allouer les poules</h2>
+        <p className="text-sm text-gray-500">{presentCount} {participantLabel} présent{isTeamEvent ? 'es' : 's'}</p>
+        <form onSubmit={onSubmit} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label" htmlFor="pool-count-input">Nombre de poules</label>
+              <input id="pool-count-input" className="input" type="number" min={1} max={presentCount}
+                value={poolCountInput}
+                onChange={e => {
+                  setPoolCountInput(e.target.value)
+                  const cnt = parseInt(e.target.value)
+                  if (cnt > 0) setPoolSizeInput(String(Math.round(presentCount / cnt)))
+                }}
+                required />
+            </div>
+            <div>
+              <label className="label" htmlFor="pool-size-input">Taille cible</label>
+              <input id="pool-size-input" className="input" type="number" min={1} max={presentCount}
+                value={poolSizeInput}
+                onChange={e => {
+                  setPoolSizeInput(e.target.value)
+                  const sz = parseInt(e.target.value)
+                  if (sz > 0) setPoolCountInput(String(poolCountFromSize(presentCount, sz)))
+                }} />
+            </div>
+          </div>
+          {poolCountInput && parseInt(poolCountInput) > 0 && (
+            <p className="text-xs text-blue-600 font-medium">
+              → {poolSizeDescription(presentCount, parseInt(poolCountInput))}
+            </p>
+          )}
+          <div>
+            <p className="label">Répartition</p>
+            <div className="flex gap-3 mt-1">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="seeding" checked={seedingBalanced} onChange={() => setSeedingBalanced(true)} className="accent-blue-600" />
+                <span className="text-sm text-gray-700">Équilibrée <span className="text-xs text-gray-400">(serpentin)</span></span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="seeding" checked={!seedingBalanced} onChange={() => setSeedingBalanced(false)} className="accent-blue-600" />
+                <span className="text-sm text-gray-700">Par force <span className="text-xs text-gray-400">(meilleurs ensemble)</span></span>
+              </label>
+            </div>
+          </div>
+          {!isTeamEvent && (
+            <div>
+              <p className="label">Séparation</p>
+              <p className="text-xs text-gray-400 mb-1">Éviter deux tireurs du même dans la même poule</p>
+              <div className="flex gap-3 flex-wrap mt-1">
+                {(['club','country','league'] as const).map(crit => {
+                  const labels = { club: 'Club', country: 'Nation', league: 'Ligue' }
+                  return (
+                    <label key={crit} className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="checkbox" className="accent-blue-600"
+                        checked={swapCriteria.includes(crit)}
+                        onChange={e => toggleSwapCrit(crit, e.target.checked)} />
+                      <span className="text-sm text-gray-700">{labels[crit]}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+          <div className="flex gap-2 pt-2">
+            <button type="button" className="btn-secondary flex-1" onClick={onClose}>Annuler</button>
+            <button type="submit" className="btn-primary flex-1">Allouer</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+interface PoolActionButtonsProps {
+  readonly stage: PoolPhase
+  readonly eligibleLatecomers: { id: string }[]
+  readonly hasLaterStageStarted: boolean
+  readonly onAllocate: () => void
+  readonly onLock: () => void
+  readonly onOpenLatecomer: () => void
+  readonly onFillRandom: () => void
+  readonly onUnlock: () => void
+}
+function PoolActionButtons({ stage, eligibleLatecomers, hasLaterStageStarted, onAllocate, onLock, onOpenLatecomer, onFillRandom, onUnlock }: PoolActionButtonsProps) {
+  return (
+    <div className="print:hidden flex gap-2 flex-wrap">
+      {stage.status === 'pending' && (
+        <button className="btn-primary" onClick={onAllocate}>⚙️ Allouer les poules</button>
+      )}
+      {stage.status === 'running' && (
+        <button className="btn-primary bg-green-600 hover:bg-green-700" onClick={onLock}>
+          ✅ Terminer le tour
+        </button>
+      )}
+      {stage.status === 'running' && eligibleLatecomers.length > 0 && (
+        <button className="btn-secondary" onClick={onOpenLatecomer}
+          title="Ajouter un tireur arrivé en retard dans la plus petite poule">
+          🕐 Retardataire
+        </button>
+      )}
+      {stage.pools.length > 0 && stage.status === 'running' && import.meta.env.DEV && (
+        <button className="btn-secondary border-orange-300 text-orange-700 hover:bg-orange-50" onClick={onFillRandom}>
+          🎲 Scores aléatoires
+        </button>
+      )}
+      {stage.pools.length > 0 && (
+        <button className="btn-secondary" onClick={() => window.print()}>
+          🖨️ Imprimer
+        </button>
+      )}
+      {stage.status === 'done' && !hasLaterStageStarted && (
+        <button className="btn-secondary" onClick={onUnlock}>
+          🔓 Rouvrir pour correction
+        </button>
+      )}
+    </div>
+  )
+}
+
+function isLaterStageStarted(contest: import('../types').Contest, stageId: string): boolean {
+  const stageIdx = contest.stages.findIndex(s => s.id === stageId)
+  return contest.stages.slice(stageIdx + 1).some(s => s.status === 'running' || s.status === 'done')
+}
+
+function getPresentCount(contest: import('../types').Contest) {
+  if (contest.isTeamEvent) return contest.teams.filter(t => t.present).length
+  return contest.fencers.filter(f => f.present).length
+}
+
+function computeDefaultAllocation(contest: import('../types').Contest, stageId: string, presentCount: number) {
+  const defaultCount = Math.ceil(presentCount / 6)
+  const defaultSize = Math.round(presentCount / defaultCount)
+  const stageIdx = contest.stages.findIndex(s => s.id === stageId)
+  const hasPrevPool = contest.stages.slice(0, stageIdx).some(s => s.type === 'pool' && s.status === 'done')
+  return { defaultCount, defaultSize, seedingBalanced: !hasPrevPool }
+}
+
+async function doSaveBout(
+  scoreA: string, scoreB: string, maxScore: number,
+  tournamentId: string, contestId: string, stageId: string, poolId: string, boutId: string,
+  setPoolBoutScore: (tid: string, cid: string, sid: string, pid: string, bid: string, sa: number, sb: number) => Promise<void>,
+  setEditingBout: (v: string | null) => void, setScoreA: (v: string) => void, setScoreB: (v: string) => void,
+) {
+  const scores = validateBoutScore(scoreA, scoreB, maxScore)
+  if (!scores) return
+  await setPoolBoutScore(tournamentId, contestId, stageId, poolId, boutId, scores.sa, scores.sb)
+  setEditingBout(null)
+  setScoreA('')
+  setScoreB('')
+}
+
 export default function PoolsPage() {
   const { tournamentId = '', contestId = '', stageId = '' } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
-  const { tournaments, allocatePoolPhase, setPoolBoutScore, setPoolBoutAbsent, lockPoolPhase, unlockPoolPhase, fillRandomPoolBouts, setPoolFencerStatus, addLatecomer } = useStore()
+  const { tournaments, loaded, allocatePoolPhase, setPoolBoutScore, setPoolBoutAbsent, lockPoolPhase, unlockPoolPhase, fillRandomPoolBouts, setPoolFencerStatus, addLatecomer } = useStore()
   const tournament = tournaments.find(t => t.id === tournamentId)
   const contest = tournament?.contests.find(c => c.id === contestId)
   const stage = contest?.stages.find(s => s.id === stageId) as PoolPhase | undefined
@@ -71,108 +317,82 @@ export default function PoolsPage() {
   const [statusMenuId, setStatusMenuId] = useState<string | null>(null)
   const [statusMenuPos, setStatusMenuPos] = useState<{ top: number; right: number } | null>(null)
 
+  if (!loaded) return <div className="p-4 text-gray-500">Chargement…</div>
+
   if (!tournament || !contest || !stage || stage.type !== 'pool') return <div className="text-red-500">Phase introuvable</div>
 
   // Unified participant map: for team events, maps team IDs to display info;
   // for individual events, maps fencer IDs to display info.
-  type ParticipantInfo = { name: string; club?: string; birthDate?: string; licenceNumber?: string }
-  const participantMap: Record<string, ParticipantInfo> = contest.isTeamEvent
-    ? Object.fromEntries(contest.teams.map(t => [t.id, { name: t.name, club: t.club }]))
-    : Object.fromEntries(contest.fencers.map(f => [f.id, { name: `${f.lastName.toUpperCase()} ${f.firstName}`, club: f.club, birthDate: f.birthDate, licenceNumber: f.licenceNumber }]))
+  const participantMap = buildParticipantMap(contest)
 
   const pool = stage.pools[selectedPool]
 
   const displayConfig = contest.displayConfig ?? DEFAULT_DISPLAY_CONFIG
 
-  const presentCount = contest.isTeamEvent
-    ? contest.teams.filter(t => t.present).length
-    : contest.fencers.filter(f => f.present).length
+  const presentCount = getPresentCount(contest)
 
   // Fencers already allocated in any pool of this stage
   const allocatedIds = new Set(stage.pools.flatMap(p => p.fencerIds))
   // Eligible latecomers: registered but not yet in any pool (regardless of present flag)
-  const eligibleLatecomers = contest.isTeamEvent
-    ? contest.teams.filter(t => !allocatedIds.has(t.id))
-    : contest.fencers.filter(f => !allocatedIds.has(f.id))
+  const eligibleLatecomers = getEligibleLatecomers(contest, allocatedIds)
 
   function openAllocateModal() {
-    if (!contest) return
-    const defaultCount = Math.ceil(presentCount / 6)
+    const { defaultCount, defaultSize, seedingBalanced: balanced } = computeDefaultAllocation(contest, stageId, presentCount)
     setPoolCountInput(String(defaultCount))
-    setPoolSizeInput(String(Math.round(presentCount / defaultCount)))
-    // Default to balanced for first round, non-balanced (par force) if a previous pool round exists
-    const stageIdx = contest.stages.findIndex(s => s.id === stageId)
-    const hasPrevPool = contest.stages.slice(0, stageIdx).some(s => s.type === 'pool' && s.status === 'done')
-    setSeedingBalanced(!hasPrevPool)
+    setPoolSizeInput(String(defaultSize))
+    setSeedingBalanced(balanced)
     setAllocateModal(true)
   }
 
   async function handleAddLatecomer() {
-    if (!latecomerFencerId) return
     await addLatecomer(tournamentId, contestId, stageId, latecomerFencerId)
     setLatecomerModal(false)
     setLatecomerFencerId('')
   }
 
-  async function handleAllocate(e: React.FormEvent) {
+  async function handleAllocate(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault()
     const count = parseInt(poolCountInput)
-    if (!count || count < 1) return
     await allocatePoolPhase(tournamentId, contestId, stageId, count, seedingBalanced, swapCriteria)
     setAllocateModal(false)
   }
 
   async function saveBout(boutId: string) {
     if (!stage) return
-    const sa = parseInt(scoreA)
-    const sb = parseInt(scoreB)
-    if (isNaN(sa) || isNaN(sb)) return
-    if (sa > stage.maxScore || sb > stage.maxScore) return
-    if (sa === sb) return
-    await setPoolBoutScore(tournamentId, contestId, stageId, pool.id, boutId, sa, sb)
-    setEditingBout(null)
-    setScoreA('')
-    setScoreB('')
+    await doSaveBout(scoreA, scoreB, stage.maxScore, tournamentId, contestId, stageId, pool.id, boutId, setPoolBoutScore, setEditingBout, setScoreA, setScoreB)
   }
 
   async function quickSaveBout(boutId: string, sa: number, sb: number) {
-    if (!stage) return
     await setPoolBoutScore(tournamentId, contestId, stageId, pool.id, boutId, sa, sb)
     setEditingBout(null)
     setScoreA('')
     setScoreB('')
   }
 
-  function startEdit(bout: PoolBout) {
-    setEditingBout(bout.id)
-    setScoreA(String(bout.scoreA ?? ''))
-    setScoreB(String(bout.scoreB ?? ''))
-  }
-
-  function participantName(id: string) {
-    return participantMap[id]?.name ?? '?'
-  }
+  const participantName = (id: string) => participantMap[id]?.name ?? '?'
 
   const participantLabel = contest.isTeamEvent ? 'équipes' : 'tireurs'
 
-  const stageIdx = contest.stages.findIndex(s => s.id === stageId)
-  const hasLaterStageStarted = contest.stages.slice(stageIdx + 1).some(s => s.status === 'running' || s.status === 'done')
+  const hasLaterStageStarted = isLaterStageStarted(contest, stageId)
 
-  const { stats: liveStats, rankMap: liveRank } = pool && selectedPool >= 0
+  const livePoolStats = pool && selectedPool >= 0
     ? computePoolLiveStats(pool, stage.maxScore)
-    : { stats: {} as Record<string, { v: number; m: number; td: number; tr: number; allFilled: boolean }>, rankMap: {} as Record<string, number> }
+    : null
+  const liveStats = livePoolStats?.stats ?? {} as Record<string, LiveStat>
+  const liveRank = livePoolStats?.rankMap ?? {} as Record<string, number>
 
+  const closeStatusMenu = () => { setStatusMenuId(null); setStatusMenuPos(null) }
   return (
     <div className="space-y-5">
       {/* Status dropdown menu — fixed positioning to avoid clip */}
       {statusMenuId && statusMenuPos && (
         <>
-          <div className="fixed inset-0 z-[9998]" role="button" tabIndex={-1} aria-label="Fermer" onClick={() => { setStatusMenuId(null); setStatusMenuPos(null) }} onKeyDown={e => { if (e.key === 'Escape') { setStatusMenuId(null); setStatusMenuPos(null) } }} />
+          <div className="fixed inset-0 z-[9998]" role="button" tabIndex={-1} aria-label="Fermer" onClick={closeStatusMenu} onKeyDown={onEscapeKey(closeStatusMenu)} />
           <div className="fixed z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-max"
             style={{ top: statusMenuPos.top, right: statusMenuPos.right }}>
             {([['ok','✓ Présent(e)','text-green-700'],['withdrawal','🚑 Forfait','text-orange-700'],['excluded','⛔ Exclu(e)','text-red-700']] as [FencerPoolStatus, string, string][]).map(([s,label,cls]) => (
               <button key={s} className={`block w-full text-left px-3 py-1.5 text-sm ${cls} hover:bg-gray-50`}
-                onClick={() => { setPoolFencerStatus(tournamentId, contestId, stageId, statusMenuId, s, contest.autoScoreStuffing ?? true); setStatusMenuId(null); setStatusMenuPos(null) }}>
+                onClick={() => { setPoolFencerStatus(tournamentId, contestId, stageId, statusMenuId, s, contest.autoScoreStuffing ?? true); closeStatusMenu() }}>
                 {label}
               </button>
             ))}
@@ -203,146 +423,46 @@ export default function PoolsPage() {
             {stage.pools.length > 0 && <span>{stage.pools.length} poule{stage.pools.length > 1 ? 's' : ''}</span>}
           </div>
         </div>
-        <div className="print:hidden flex gap-2 flex-wrap">
-          {stage.status === 'pending' && (
-            <button className="btn-primary" onClick={openAllocateModal}>⚙️ Allouer les poules</button>
-          )}
-          {stage.status === 'running' && (
-            <button className="btn-primary bg-green-600 hover:bg-green-700"
-              onClick={() => lockPoolPhase(tournamentId, contestId, stageId)}>
-              ✅ Terminer le tour
-            </button>
-          )}
-          {stage.status === 'running' && eligibleLatecomers.length > 0 && (
-            <button className="btn-secondary" onClick={() => { setLatecomerFencerId(''); setLatecomerModal(true) }}
-              title="Ajouter un tireur arrivé en retard dans la plus petite poule">
-              🕐 Retardataire
-            </button>
-          )}
-          {stage.pools.length > 0 && stage.status === 'running' && import.meta.env.DEV && (
-            <button className="btn-secondary border-orange-300 text-orange-700 hover:bg-orange-50"
-              onClick={() => fillRandomPoolBouts(tournamentId, contestId, stageId)}>
-              🎲 Scores aléatoires
-            </button>
-          )}
-          {stage.pools.length > 0 && (
-            <button className="btn-secondary" onClick={() => window.print()}>
-              🖨️ Imprimer
-            </button>
-          )}
-          {stage.status === 'done' && !hasLaterStageStarted && (
-            <button className="btn-secondary"
-              onClick={() => unlockPoolPhase(tournamentId, contestId, stageId)}>
-              🔓 Rouvrir pour correction
-            </button>
-          )}
-        </div>
+        <PoolActionButtons
+          stage={stage}
+          eligibleLatecomers={eligibleLatecomers}
+          hasLaterStageStarted={hasLaterStageStarted}
+          onAllocate={openAllocateModal}
+          onLock={() => lockPoolPhase(tournamentId, contestId, stageId)}
+          onOpenLatecomer={() => { setLatecomerFencerId(''); setLatecomerModal(true) }}
+          onFillRandom={() => fillRandomPoolBouts(tournamentId, contestId, stageId)}
+          onUnlock={() => unlockPoolPhase(tournamentId, contestId, stageId)}
+        />
       </div>
 
       {/* Modal — Retardataire */}
       {latecomerModal && (
-        <div className="print:hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
-            <h2 className="text-lg font-bold text-gray-800">🕐 Ajouter un retardataire</h2>
-            <p className="text-sm text-gray-500">
-              Le retardataire sera ajouté à la <strong>plus petite poule</strong>.
-              Les assauts déjà joués sans lui seront marqués comme <em>absences</em> (ses adversaires passés reçoivent victoire + score max).
-            </p>
-            <div>
-              <label className="label" htmlFor="latecomer-fencer-select">Tireur retardataire</label>
-              <select id="latecomer-fencer-select" className="input" value={latecomerFencerId} onChange={e => setLatecomerFencerId(e.target.value)}>
-                <option value="">— Sélectionner —</option>
-                {eligibleLatecomers.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {'lastName' in p ? `${p.lastName.toUpperCase()} ${p.firstName}` : p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex gap-2 pt-2">
-              <button type="button" className="btn-secondary flex-1" onClick={() => setLatecomerModal(false)}>Annuler</button>
-              <button type="button" className="btn-primary flex-1" disabled={!latecomerFencerId} onClick={handleAddLatecomer}>Ajouter</button>
-            </div>
-          </div>
-        </div>
+        <LatecomerModal
+          eligibleLatecomers={eligibleLatecomers}
+          latecomerFencerId={latecomerFencerId}
+          setLatecomerFencerId={setLatecomerFencerId}
+          onAdd={handleAddLatecomer}
+          onClose={() => setLatecomerModal(false)}
+        />
       )}
 
       {/* Modal — Allocation des poules */}
       {allocateModal && (
-        <div className="print:hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
-            <h2 className="text-lg font-bold text-gray-800">Allouer les poules</h2>
-            <p className="text-sm text-gray-500">{presentCount} {participantLabel} présent{contest.isTeamEvent ? 'es' : 's'}</p>
-            <form onSubmit={handleAllocate} className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label" htmlFor="pool-count-input">Nombre de poules</label>
-                  <input id="pool-count-input" className="input" type="number" min={1} max={presentCount}
-                    value={poolCountInput}
-                    onChange={e => {
-                      setPoolCountInput(e.target.value)
-                      const cnt = parseInt(e.target.value)
-                      if (cnt > 0) setPoolSizeInput(String(Math.round(presentCount / cnt)))
-                    }}
-                    required />
-                </div>
-                <div>
-                  <label className="label" htmlFor="pool-size-input">Taille cible</label>
-                  <input id="pool-size-input" className="input" type="number" min={1} max={presentCount}
-                    value={poolSizeInput}
-                    onChange={e => {
-                      setPoolSizeInput(e.target.value)
-                      const sz = parseInt(e.target.value)
-                      if (sz > 0) setPoolCountInput(String(poolCountFromSize(presentCount, sz)))
-                    }} />
-                </div>
-              </div>
-              {poolCountInput && parseInt(poolCountInput) > 0 && (
-                <p className="text-xs text-blue-600 font-medium">
-                  → {poolSizeDescription(presentCount, parseInt(poolCountInput))}
-                </p>
-              )}
-              <div>
-                <p className="label">Répartition</p>
-                <div className="flex gap-3 mt-1">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="seeding" checked={seedingBalanced} onChange={() => setSeedingBalanced(true)} className="accent-blue-600" />
-                    <span className="text-sm text-gray-700">Équilibrée <span className="text-xs text-gray-400">(serpentin)</span></span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="seeding" checked={!seedingBalanced} onChange={() => setSeedingBalanced(false)} className="accent-blue-600" />
-                    <span className="text-sm text-gray-700">Par force <span className="text-xs text-gray-400">(meilleurs ensemble)</span></span>
-                  </label>
-                </div>
-              </div>
-              {!contest.isTeamEvent && (
-                <div>
-                  <p className="label">Séparation</p>
-                  <p className="text-xs text-gray-400 mb-1">Éviter deux tireurs du même dans la même poule</p>
-                  <div className="flex gap-3 flex-wrap mt-1">
-                    {(['club','country','league'] as const).map(crit => {
-                      const labels = { club: 'Club', country: 'Nation', league: 'Ligue' }
-                      return (
-                        <label key={crit} className="flex items-center gap-1.5 cursor-pointer">
-                          <input type="checkbox" className="accent-blue-600"
-                            checked={swapCriteria.includes(crit)}
-                            onChange={e => setSwapCriteria(prev =>
-                              e.target.checked ? [...prev, crit] : prev.filter(c => c !== crit)
-                            )} />
-                          <span className="text-sm text-gray-700">{labels[crit]}</span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-              <div className="flex gap-2 pt-2">
-                <button type="button" className="btn-secondary flex-1" onClick={() => setAllocateModal(false)}>Annuler</button>
-                <button type="submit" className="btn-primary flex-1">Allouer</button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <AllocateModal
+          presentCount={presentCount}
+          participantLabel={participantLabel}
+          isTeamEvent={contest.isTeamEvent}
+          poolCountInput={poolCountInput}
+          setPoolCountInput={setPoolCountInput}
+          poolSizeInput={poolSizeInput}
+          setPoolSizeInput={setPoolSizeInput}
+          seedingBalanced={seedingBalanced}
+          setSeedingBalanced={setSeedingBalanced}
+          swapCriteria={swapCriteria}
+          setSwapCriteria={setSwapCriteria}
+          onSubmit={handleAllocate}
+          onClose={() => setAllocateModal(false)}
+        />
       )}
 
       {stage.pools.length === 0 ? (
@@ -421,9 +541,14 @@ export default function PoolsPage() {
                 <ol className="space-y-1">
                   {pool.fencerIds.map((fId, idx) => {
                     const fencerStatus: FencerPoolStatus = (stage.fencerStatuses?.[fId] ?? 'ok') as FencerPoolStatus
-                    const statusIcon = fencerStatus === 'ok' ? '✓' : fencerStatus === 'withdrawal' ? '🚑' : '⛔'
-                    const statusColor = fencerStatus === 'ok' ? 'text-green-600' : fencerStatus === 'withdrawal' ? 'text-orange-600' : 'text-red-600'
-                    const statusLabel = fencerStatus === 'ok' ? 'Présent(e)' : fencerStatus === 'withdrawal' ? 'Forfait' : 'Exclu(e)'
+                    let statusIcon = '✓'
+                    let statusColor = 'text-green-600'
+                    let statusLabel = 'Présent(e)'
+                    if (fencerStatus === 'withdrawal') {
+                      statusIcon = '🚑'; statusColor = 'text-orange-600'; statusLabel = 'Forfait'
+                    } else if (fencerStatus === 'excluded') {
+                      statusIcon = '⛔'; statusColor = 'text-red-600'; statusLabel = 'Exclu(e)'
+                    }
                     return (
                       <li key={fId} className="flex items-center gap-2 text-sm">
                         <span className="w-5 h-5 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-bold">{idx + 1}</span>
@@ -478,7 +603,7 @@ export default function PoolsPage() {
                       scoreBInput={scoreB}
                       onScoreAChange={setScoreA}
                       onScoreBChange={setScoreB}
-                      onEdit={() => startEdit(bout)}
+                      onEdit={() => { setEditingBout(bout.id); setScoreA(String(bout.scoreA ?? '')); setScoreB(String(bout.scoreB ?? '')) }}
                       onSave={() => saveBout(bout.id)}
                       onCancel={() => setEditingBout(null)}
                       onAbsent={(side) => setPoolBoutAbsent(tournamentId, contestId, stageId, pool.id, bout.id, side)}
@@ -505,11 +630,11 @@ export default function PoolsPage() {
                 contest.category].filter(Boolean).join(' · ')}
             </p>
             <p className="text-xs text-gray-500">
-              {[contest.date
-                  ? new Date(contest.date).toLocaleDateString('fr-FR')
-                  : tournament.startDate
-                    ? new Date(tournament.startDate).toLocaleDateString('fr-FR')
-                    : '',
+              {[(() => {
+                if (contest.date) return new Date(contest.date).toLocaleDateString('fr-FR')
+                if (tournament.startDate) return new Date(tournament.startDate).toLocaleDateString('fr-FR')
+                return ''
+              })(),
                 contest.location ?? tournament.location ?? ''].filter(Boolean).join(' — ')}
             </p>
             <p className="text-xs text-gray-500 mt-0.5">
@@ -578,7 +703,7 @@ export default function PoolsPage() {
 const WEAPON_LABEL: Record<string, string> = { epee: 'Épée', foil: 'Fleuret', sabre: 'Sabre' }
 const GENDER_LABEL: Record<string, string> = { men: 'Messieurs', women: 'Dames', mixed: 'Mixte' }
 
-function PoolScoreSheet({ pool, stage, participantMap, contest, tournament, referees, displayConfig }: {
+function PoolScoreSheet({ pool, stage, participantMap, contest, tournament, referees, displayConfig }: Readonly<{
   pool: Pool
   stage: PoolPhase
   participantMap: Record<string, { name: string; club?: string; birthDate?: string; licenceNumber?: string }>
@@ -586,7 +711,7 @@ function PoolScoreSheet({ pool, stage, participantMap, contest, tournament, refe
   tournament: import('../types').Tournament
   referees: Referee[]
   displayConfig: import('../types').DisplayConfig
-}) {
+}>) {
   const referee = pool.refereeId ? referees.find(r => r.id === pool.refereeId) : undefined
   const refName = referee ? `${referee.lastName.toUpperCase()} ${referee.firstName}` : ''
 
@@ -595,11 +720,12 @@ function PoolScoreSheet({ pool, stage, participantMap, contest, tournament, refe
   const categoryLabel = contest.category ? ` ${contest.category}` : ''
   const fullLabel = `${weaponLabel} ${genderLabel}${categoryLabel}`
 
-  const dateLabel = contest.date
-    ? new Date(contest.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-    : tournament.startDate
-      ? new Date(tournament.startDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-      : ''
+  let dateLabel = ''
+  if (contest.date) {
+    dateLabel = new Date(contest.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  } else if (tournament.startDate) {
+    dateLabel = new Date(tournament.startDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  }
   const locationLabel = contest.location ?? tournament.location ?? ''
 
   const fencers = pool.fencerIds.map((id, idx) => {
@@ -688,7 +814,11 @@ function PoolScoreSheet({ pool, stage, participantMap, contest, tournament, refe
                     <td>{result?.bouts ?? ''}</td>
                     <td>{result?.touchesScored ?? ''}</td>
                     <td>{result?.touchesReceived ?? ''}</td>
-                    <td>{result ? (result.index >= 0 ? `+${result.index}` : String(result.index)) : ''}</td>
+                    <td>{(() => {
+                      if (!result) return ''
+                      if (result.index >= 0) return `+${result.index}`
+                      return String(result.index)
+                    })()}</td>
                     <td>{result?.rank ?? ''}</td>
                   </tr>
                 )
@@ -838,7 +968,7 @@ const QuickPopup = ({ scores, colorClass, popupPos, handleQuick }: {
   </div>
 )
 
-function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBInput, onScoreAChange, onScoreBChange, onEdit, onSave, onCancel, onAbsent, onQuickScore, disabled }: {
+function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBInput, onScoreAChange, onScoreBChange, onEdit, onSave, onCancel, onAbsent, onQuickScore, disabled }: Readonly<{
   bout: PoolBout
   nameA: string
   nameB: string
@@ -854,13 +984,12 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
   onAbsent: (side: 'A' | 'B') => void
   onQuickScore: (sa: number, sb: number) => void
   disabled: boolean
-}) {
+}>) {
   const [openSide, setOpenSide] = useState<'A' | 'B' | null>(null)
   const [popupPos, setPopupPos] = useState<{ top?: number; bottom?: number; left?: number; right?: number } | null>(null)
 
   const scored = bout.scoreA !== undefined && bout.scoreB !== undefined
   const isAbsent = bout.resultA === 'A' || bout.resultB === 'A'
-  void isAbsent
 
   const quickScoresA = Array.from({ length: maxScore }, (_, i) => ({ sa: maxScore, sb: i }))
   const quickScoresB = Array.from({ length: maxScore }, (_, i) => ({ sa: i, sb: maxScore }))
@@ -895,7 +1024,7 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
   })()
 
   return (
-    <div className={`rounded-lg border p-2 ${scored ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-200'} ${bout.resultA === 'A' || bout.resultB === 'A' ? 'opacity-60' : ''}`}>
+    <div className={`rounded-lg border p-2 ${scored ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-200'} ${isAbsent ? 'opacity-60' : ''}`}>
       {/* Backdrop to close popup on outside click */}
       {openSide && <div className="fixed inset-0 z-[9998]" role="button" tabIndex={-1} aria-label="Fermer" onClick={() => { setOpenSide(null); setPopupPos(null) }} onKeyDown={e => { if (e.key === 'Escape') { setOpenSide(null); setPopupPos(null) } }} />}
       {openSide && popupPos && (
@@ -960,11 +1089,19 @@ function BoutRow({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, scoreBI
               V ▾
             </button>
           )}
-          <span className={`text-sm flex-1 text-right truncate min-w-0 ${bout.resultA === 'V' ? 'font-bold text-green-700' : bout.resultA === 'A' ? 'text-red-500 italic' : 'text-gray-700'}`}>{nameA}{bout.resultA === 'A' ? ' (ABS)' : ''}</span>
-          <span className="text-sm font-mono font-bold text-gray-800 w-16 text-center shrink-0">
-            {scored ? `${bout.scoreA} — ${bout.scoreB}` : '— —'}
-          </span>
-          <span className={`text-sm flex-1 truncate min-w-0 ${bout.resultB === 'V' ? 'font-bold text-green-700' : bout.resultB === 'A' ? 'text-red-500 italic' : 'text-gray-700'}`}>{nameB}{bout.resultB === 'A' ? ' (ABS)' : ''}</span>
+          {(() => {
+            let classA = 'text-gray-700'
+            if (bout.resultA === 'V') { classA = 'font-bold text-green-700' } else if (bout.resultA === 'A') { classA = 'text-red-500 italic' }
+            let classB = 'text-gray-700'
+            if (bout.resultB === 'V') { classB = 'font-bold text-green-700' } else if (bout.resultB === 'A') { classB = 'text-red-500 italic' }
+            return (<>
+              <span className={`text-sm flex-1 text-right truncate min-w-0 ${classA}`}>{nameA}{bout.resultA === 'A' ? ' (ABS)' : ''}</span>
+              <span className="text-sm font-mono font-bold text-gray-800 w-16 text-center shrink-0">
+                {scored ? `${bout.scoreA} — ${bout.scoreB}` : '— —'}
+              </span>
+              <span className={`text-sm flex-1 truncate min-w-0 ${classB}`}>{nameB}{bout.resultB === 'A' ? ' (ABS)' : ''}</span>
+            </>)
+          })()}
           {/* Trigger bulle : B gagne */}
           {!disabled && (
             <button

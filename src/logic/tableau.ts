@@ -70,6 +70,46 @@ function branchHasPlayer(bouts: TableauBout[], round: number, boutIndex: number,
  * Only processes main bracket bouts (bouts without a bracket identifier).
  * Consolation bracket bouts are passed through unchanged.
  */
+function advanceWinner(working: TableauBout[], bout: TableauBout, winnerId: string) {
+  const r = bout.round
+  const nextRound = Math.floor(r / 2)
+  if (nextRound < 1) return
+  const nextBoutIndex = Math.floor(bout.boutIndex / 2)
+  const isSlotA = bout.boutIndex % 2 === 0
+  const next = working.find(b => !b.bracket && b.round === nextRound && b.boutIndex === nextBoutIndex)
+  if (next && !next.winnerId) {
+    if (isSlotA && !next.fencerAId) next.fencerAId = winnerId
+    else if (!isSlotA && !next.fencerBId) next.fencerBId = winnerId
+  }
+}
+
+function propagateByeForBout(
+  bout: TableauBout,
+  working: TableauBout[],
+  size: number,
+): boolean {
+  const hasA = !!bout.fencerAId
+  const hasB = !!bout.fencerBId
+  if (hasA === hasB) return false
+
+  const r = bout.round
+  let emptyBranchHasPlayer: boolean
+  if (r === size) {
+    emptyBranchHasPlayer = false
+  } else {
+    const emptyPredIdx = !hasA ? bout.boutIndex * 2 : bout.boutIndex * 2 + 1
+    emptyBranchHasPlayer = branchHasPlayer(working, r * 2, emptyPredIdx, size)
+  }
+
+  if (!emptyBranchHasPlayer) {
+    const winnerId = (bout.fencerAId ?? bout.fencerBId) as string
+    bout.winnerId = winnerId
+    advanceWinner(working, bout, winnerId)
+    return true
+  }
+  return false
+}
+
 export function propagateByes(bouts: TableauBout[]): TableauBout[] {
   const working = bouts.map(b => ({ ...b }))
   // Only work on main bracket bouts
@@ -83,51 +123,40 @@ export function propagateByes(bouts: TableauBout[]): TableauBout[] {
     changed = false
     for (const r of rounds) {
       for (const bout of working.filter(b => !b.bracket && b.round === r && !b.winnerId)) {
-        const hasA = !!bout.fencerAId
-        const hasB = !!bout.fencerBId
-        if (hasA === hasB) continue // both filled (real match) or both empty (pending/void)
-
-        // One slot filled. Check if the EMPTY side's branch will ever have a player.
-        let emptyBranchHasPlayer: boolean
-        if (r === size) {
-          // First round: the slot was never seeded → definitive BYE
-          emptyBranchHasPlayer = false
-        } else {
-          // Check predecessor sub-tree of the empty slot
-          const emptyPredIdx = !hasA
-            ? bout.boutIndex * 2        // fencerA missing → check predA branch
-            : bout.boutIndex * 2 + 1   // fencerB missing → check predB branch
-          emptyBranchHasPlayer = branchHasPlayer(working, r * 2, emptyPredIdx, size)
-        }
-
-        if (!emptyBranchHasPlayer) {
-          // Definitive BYE: auto-advance the present player
-          const winnerId = (bout.fencerAId ?? bout.fencerBId) as string
-          bout.winnerId = winnerId
-          changed = true
-          // Propagate into next round slot
-          const nextRound = Math.floor(r / 2)
-          if (nextRound >= 1) {
-            const nextBoutIndex = Math.floor(bout.boutIndex / 2)
-            const isSlotA = bout.boutIndex % 2 === 0
-            const next = working.find(b => !b.bracket && b.round === nextRound && b.boutIndex === nextBoutIndex)
-            if (next && !next.winnerId) {
-              if (isSlotA && !next.fencerAId) next.fencerAId = winnerId
-              else if (!isSlotA && !next.fencerBId) next.fencerBId = winnerId
-            }
-          }
-        }
+        if (propagateByeForBout(bout, working, size)) changed = true
       }
     }
   }
   return working
 }
 
+function buildConsolationBrackets(result: TableauBout[], size: number) {
+  let R = size
+  while (R >= 8) {
+    const bracketId = `cons-from-${R}`
+    const consSize = R / 2
+    let consRound = consSize
+    while (consRound >= 2) {
+      const boutCount = consRound / 2
+      for (let i = 0; i < boutCount; i++) {
+        result.push({ id: nanoid(), round: consRound, boutIndex: i, bracket: bracketId })
+      }
+      consRound = Math.floor(consRound / 2)
+    }
+    if (consSize >= 4) {
+      result.push({ id: nanoid(), round: 4, boutIndex: 2, bracket: bracketId })
+    }
+    R = R / 2
+  }
+}
+
 export function buildBracket(size: TableauSize, seededFencerIds: string[], fencedPlaces: FencedPlaces | boolean = 'none'): TableauBout[] {
-  // Normalise boolean (legacy callers)
-  const places: FencedPlaces = typeof fencedPlaces === 'boolean'
-    ? (fencedPlaces ? 'third_place' : 'none')
-    : fencedPlaces
+  let places: FencedPlaces
+  if (typeof fencedPlaces === 'boolean') {
+    places = fencedPlaces ? 'third_place' : 'none'
+  } else {
+    places = fencedPlaces
+  }
 
   const bouts: TableauBout[] = []
   const seeding = FIE_SEEDING[size] ?? generateSeedingFor(size)
@@ -135,8 +164,7 @@ export function buildBracket(size: TableauSize, seededFencerIds: string[], fence
   // First round: place seeded fencers into slots
   const firstRoundSlots: (string | undefined)[] = Array(size).fill(undefined)
   seededFencerIds.forEach((fId, seedIdx) => {
-    const slot = seeding[seedIdx]
-    if (slot !== undefined) firstRoundSlots[slot] = fId
+    firstRoundSlots[seeding[seedIdx]] = fId
   })
 
   for (let i = 0; i < size / 2; i++) {
@@ -166,32 +194,8 @@ export function buildBracket(size: TableauSize, seededFencerIds: string[], fence
   }
 
   // ── Consolation brackets for all_places ──────────────────────────────────
-  // For each main round R ≥ 8, the losers feed a consolation bracket 'cons-from-R'.
-  // The consolation bracket has consSize = R/2 fencers and its own rounds.
   if (places === 'all_places') {
-    let R = size
-    while (R >= 8) {
-      const bracketId = `cons-from-${R}`
-      const consSize = R / 2  // number of fencers entering this consolation bracket
-
-      // Generate rounds for this consolation bracket: consSize, consSize/2, …, 2
-      let consRound = consSize
-      while (consRound >= 2) {
-        const boutCount = consRound / 2
-        for (let i = 0; i < boutCount; i++) {
-          result.push({ id: nanoid(), round: consRound, boutIndex: i, bracket: bracketId })
-        }
-        consRound = Math.floor(consRound / 2)
-      }
-
-      // 3rd-place bout within this consolation bracket (= 7th, 13th, 25th… overall)
-      // Only when consSize ≥ 4 (i.e. there is a semi-final round to produce two losers)
-      if (consSize >= 4) {
-        result.push({ id: nanoid(), round: 4, boutIndex: 2, bracket: bracketId })
-      }
-
-      R = R / 2  // next main round down
-    }
+    buildConsolationBrackets(result, size)
   }
 
   return result

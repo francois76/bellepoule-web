@@ -50,6 +50,29 @@ export function poolSizeDescription(participantCount: number, poolCount: number)
   return `${poolCount} poule${poolCount > 1 ? 's' : ''} de ${base} ou ${base + 1} tireurs`
 }
 
+function snakeDistribute(sorted: { id: string }[], pools: Pool[]) {
+  let dir = 1
+  let col = 0
+  for (const fencer of sorted) {
+    pools[col].fencerIds.push(fencer.id)
+    col += dir
+    if (col >= pools.length) { col = pools.length - 1; dir = -1 }
+    else if (col < 0) { col = 0; dir = 1 }
+  }
+}
+
+function groupedDistribute(sorted: { id: string }[], pools: Pool[]) {
+  const baseSize = Math.floor(sorted.length / pools.length)
+  const extra = sorted.length % pools.length
+  let idx = 0
+  for (let p = 0; p < pools.length; p++) {
+    const size = baseSize + (p < extra ? 1 : 0)
+    for (let i = 0; i < size; i++) {
+      pools[p].fencerIds.push(sorted[idx++].id)
+    }
+  }
+}
+
 /**
  * Distribute participants (fencers or teams) into pools.
  * seedOrder: optional array of participant IDs in rank order (e.g. from a previous pool round).
@@ -80,27 +103,9 @@ export function allocatePools(
   }))
 
   if (seedingBalanced) {
-    // Snake distribution: 0→N-1 then N-1→0, alternating (levels balanced across pools)
-    let dir = 1
-    let col = 0
-    for (const fencer of sorted) {
-      pools[col].fencerIds.push(fencer.id)
-      col += dir
-      if (col >= poolCount) { col = poolCount - 1; dir = -1 }
-      else if (col < 0) { col = 0; dir = 1 }
-    }
+    snakeDistribute(sorted, pools)
   } else {
-    // Grouped/by-strength: fill pool 1 first, then pool 2, etc.
-    // Compute base size and how many pools get an extra fencer
-    const baseSize = Math.floor(sorted.length / poolCount)
-    const extra = sorted.length % poolCount
-    let idx = 0
-    for (let p = 0; p < poolCount; p++) {
-      const size = baseSize + (p < extra ? 1 : 0)
-      for (let i = 0; i < size; i++) {
-        pools[p].fencerIds.push(sorted[idx++].id)
-      }
-    }
+    groupedDistribute(sorted, pools)
   }
 
   // Generate bouts for each pool using FIE order (or fallback)
@@ -108,6 +113,23 @@ export function allocatePools(
     ...pool,
     bouts: fieBoutOrder(pool.fencerIds),
   }))
+}
+
+function roundRobinBouts(fencerIds: string[]): PoolBout[] {
+  const n = fencerIds.length
+  const bouts: PoolBout[] = []
+  let order_idx = 0
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      bouts.push({
+        id: nanoid(),
+        fencerAId: fencerIds[i],
+        fencerBId: fencerIds[j],
+        order: ++order_idx,
+      })
+    }
+  }
+  return bouts
 }
 
 /**
@@ -127,19 +149,7 @@ export function fieBoutOrder(fencerIds: string[]): PoolBout[] {
   }
 
   // Fallback: round-robin for large pools (>7)
-  const bouts: PoolBout[] = []
-  let order_idx = 0
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      bouts.push({
-        id: nanoid(),
-        fencerAId: fencerIds[i],
-        fencerBId: fencerIds[j],
-        order: ++order_idx,
-      })
-    }
-  }
-  return bouts
+  return roundRobinBouts(fencerIds)
 }
 
 // ─── Separation criteria (greedy swap) ──────────────────────────────────────
@@ -151,22 +161,87 @@ type ParticipantInfo = { id: string; club?: string; country?: string; league?: s
  * A conflict occurs when two fencers in the same pool share the same
  * non-empty value for any criterion (club, country, or league).
  */
-function countConflicts(pools: Pool[], info: Map<string, ParticipantInfo>, criteria: ('club' | 'country' | 'league')[]): number {
+type SepCrit = 'club' | 'country' | 'league'
+
+function countPoolCritConflicts(poolFencerIds: string[], crit: SepCrit, info: Map<string, ParticipantInfo>): number {
+  const values: string[] = []
+  for (const id of poolFencerIds) {
+    const v = info.get(id)?.[crit]
+    if (v) values.push(v)
+  }
+  const freq = new Map<string, number>()
+  for (const v of values) freq.set(v, (freq.get(v) ?? 0) + 1)
+  let count = 0
+  for (const cnt of freq.values()) if (cnt > 1) count += cnt - 1
+  return count
+}
+
+function countConflicts(pools: Pool[], info: Map<string, ParticipantInfo>, criteria: SepCrit[]): number {
   let count = 0
   for (const pool of pools) {
     for (const crit of criteria) {
-      const values: string[] = []
-      for (const id of pool.fencerIds) {
-        const v = info.get(id)?.[crit]
-        if (v) values.push(v)
-      }
-      // Count duplicate values (each pair is one conflict)
-      const freq = new Map<string, number>()
-      for (const v of values) freq.set(v, (freq.get(v) ?? 0) + 1)
-      for (const cnt of freq.values()) if (cnt > 1) count += cnt - 1
+      count += countPoolCritConflicts(pool.fencerIds, crit, info)
     }
   }
   return count
+}
+
+function trySwapImproves(
+  result: Pool[],
+  pi: number, ai: number,
+  pj: number, bj: number,
+  info: Map<string, ParticipantInfo>,
+  criteria: SepCrit[],
+  best: number,
+): boolean {
+  const tmp = result[pi].fencerIds[ai]
+  result[pi].fencerIds[ai] = result[pj].fencerIds[bj]
+  result[pj].fencerIds[bj] = tmp
+  const newConflicts = countConflicts(result, info, criteria)
+  if (newConflicts < best) return true
+  result[pj].fencerIds[bj] = result[pi].fencerIds[ai]
+  result[pi].fencerIds[ai] = tmp
+  return false
+}
+
+function trySwapsForPair(
+  result: Pool[],
+  pi: number, pj: number,
+  info: Map<string, ParticipantInfo>,
+  criteria: SepCrit[],
+  best: number,
+): { improved: boolean; newBest: number } {
+  let anyImproved = false
+  for (let ai = 0; ai < result[pi].fencerIds.length; ai++) {
+    for (let bj = 0; bj < result[pj].fencerIds.length; bj++) {
+      if (trySwapImproves(result, pi, ai, pj, bj, info, criteria, best)) {
+        best = countConflicts(result, info, criteria)
+        anyImproved = true
+        if (best === 0) return { improved: true, newBest: 0 }
+      }
+    }
+  }
+  return { improved: anyImproved, newBest: best }
+}
+
+function tryAllSwaps(
+  result: Pool[],
+  info: Map<string, ParticipantInfo>,
+  criteria: SepCrit[],
+  best: number,
+): { improved: boolean; newBest: number } {
+  let anyImproved = false
+  for (let pi = 0; pi < result.length; pi++) {
+    for (let pj = pi + 1; pj < result.length; pj++) {
+      const r = trySwapsForPair(result, pi, pj, info, criteria, best)
+      if (r.improved) {
+        anyImproved = true
+        best = r.newBest
+        if (best === 0) return { improved: true, newBest: 0 }
+      }
+    }
+  }
+  return { improved: anyImproved, newBest: best }
 }
 
 /**
@@ -178,7 +253,7 @@ function countConflicts(pools: Pool[], info: Map<string, ParticipantInfo>, crite
 export function applySeparationCriteria(
   pools: Pool[],
   participants: ParticipantInfo[],
-  criteria: ('club' | 'country' | 'league')[],
+  criteria: SepCrit[],
 ): Pool[] {
   if (!criteria.length || pools.length <= 1) return pools
 
@@ -192,32 +267,10 @@ export function applySeparationCriteria(
   let best = countConflicts(result, info, criteria)
 
   while (improved && iter < MAX_ITER && best > 0) {
-    improved = false
     iter++
-    outer:
-    for (let pi = 0; pi < result.length; pi++) {
-      for (let pj = pi + 1; pj < result.length; pj++) {
-        for (let ai = 0; ai < result[pi].fencerIds.length; ai++) {
-          for (let bj = 0; bj < result[pj].fencerIds.length; bj++) {
-            // Try swapping result[pi].fencerIds[ai] with result[pj].fencerIds[bj]
-            const tmp = result[pi].fencerIds[ai]
-            result[pi].fencerIds[ai] = result[pj].fencerIds[bj]
-            result[pj].fencerIds[bj] = tmp
-
-            const newConflicts = countConflicts(result, info, criteria)
-            if (newConflicts < best) {
-              best = newConflicts
-              improved = true
-              if (best === 0) break outer
-            } else {
-              // Revert
-              result[pj].fencerIds[bj] = result[pi].fencerIds[ai]
-              result[pi].fencerIds[ai] = tmp
-            }
-          }
-        }
-      }
-    }
+    const swapResult = tryAllSwaps(result, info, criteria, best)
+    improved = swapResult.improved
+    best = swapResult.newBest
   }
 
   // Regenerate bouts with the new assignment
