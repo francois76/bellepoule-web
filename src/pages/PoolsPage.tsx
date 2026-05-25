@@ -7,6 +7,49 @@ import type { PoolPhase, PoolBout, Pool, Referee, FencerPoolStatus } from '../ty
 import { DEFAULT_DISPLAY_CONFIG } from '../types'
 import { poolCountFromSize, poolSizeDescription } from '../logic/pools'
 
+function computePoolLiveStats(pool: Pool, maxScore: number) {
+  const stats: Record<string, { v: number; m: number; td: number; tr: number; allFilled: boolean }> = {}
+  for (const fId of pool.fencerIds) {
+    stats[fId] = { v: 0, m: 0, td: 0, tr: 0, allFilled: true }
+  }
+  for (const bout of pool.bouts) {
+    const a = stats[bout.fencerAId]
+    const b = stats[bout.fencerBId]
+    if (!a || !b) continue
+    if (bout.resultA === undefined) {
+      a.allFilled = false
+      b.allFilled = false
+      continue
+    }
+    if (bout.resultA === 'A') {
+      a.m++; b.m++
+      b.v++; b.td += maxScore; a.tr += maxScore
+    } else if (bout.resultB === 'A') {
+      a.m++; b.m++
+      a.v++; a.td += maxScore; b.tr += maxScore
+    } else {
+      a.m++; b.m++
+      a.td += bout.scoreA ?? 0; a.tr += bout.scoreB ?? 0
+      b.td += bout.scoreB ?? 0; b.tr += bout.scoreA ?? 0
+      if (bout.resultA === 'V') a.v++
+      if (bout.resultB === 'V') b.v++
+    }
+  }
+  const filled = pool.fencerIds.filter(fId => stats[fId]?.allFilled)
+  const sorted = [...filled].sort((x, y) => {
+    const sx = stats[x], sy = stats[y]
+    const rx = sx.m > 0 ? Math.floor(sx.v * 1000 / sx.m) : 0
+    const ry = sy.m > 0 ? Math.floor(sy.v * 1000 / sy.m) : 0
+    if (ry !== rx) return ry - rx
+    const ix = sx.td - sx.tr, iy = sy.td - sy.tr
+    if (iy !== ix) return iy - ix
+    return sy.td - sx.td
+  })
+  const rankMap: Record<string, number> = {}
+  sorted.forEach((fId, i) => { rankMap[fId] = i + 1 })
+  return { stats, rankMap }
+}
+
 export default function PoolsPage() {
   const { tournamentId, contestId, stageId } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
   const { tournaments, allocatePoolPhase, setPoolBoutScore, setPoolBoutAbsent, lockPoolPhase, unlockPoolPhase, fillRandomPoolBouts, setPoolFencerStatus, addLatecomer } = useStore()
@@ -113,6 +156,10 @@ export default function PoolsPage() {
 
   const stageIdx = contest.stages.findIndex(s => s.id === stageId)
   const hasLaterStageStarted = contest.stages.slice(stageIdx + 1).some(s => s.status === 'running' || s.status === 'done')
+
+  const { stats: liveStats, rankMap: liveRank } = pool && selectedPool >= 0
+    ? computePoolLiveStats(pool, stage.maxScore)
+    : { stats: {} as Record<string, { v: number; m: number; td: number; tr: number; allFilled: boolean }>, rankMap: {} as Record<string, number> }
 
   return (
     <div className="space-y-5">
@@ -381,24 +428,34 @@ export default function PoolsPage() {
                         <span className="w-5 h-5 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-bold">{idx + 1}</span>
                         <span className={`text-gray-800 ${fencerStatus !== 'ok' ? 'line-through text-gray-400' : ''}`}>{participantName(fId)}</span>
                         {participantMap[fId]?.club && <span className="text-gray-400 text-xs">({participantMap[fId].club})</span>}
-                        {/* Status badge + dropdown */}
-                        {stage.status !== 'done' && (
-                          <div className="relative ml-auto">
-                            <button
-                              className={`text-xs font-medium ${statusColor} border border-current rounded px-1.5 py-0.5 hover:opacity-80`}
-                              title={statusLabel}
-                              onClick={e => {
-                                if (statusMenuId === fId) { setStatusMenuId(null); setStatusMenuPos(null); return }
-                                const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect()
-                                setStatusMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
-                                setStatusMenuId(fId)
-                              }}
-                            >{statusIcon} {statusLabel}</button>
-                          </div>
-                        )}
-                        {stage.status === 'done' && fencerStatus !== 'ok' && (
-                          <span className={`ml-auto text-xs font-medium ${statusColor}`}>{statusIcon}</span>
-                        )}
+                        <div className="ml-auto flex items-center gap-2 shrink-0">
+                          {liveStats[fId]?.allFilled && (
+                            <span
+                              className="text-xs font-mono text-gray-400"
+                              title={`V:${liveStats[fId].v}  M:${liveStats[fId].m}  TD:${liveStats[fId].td}  TR:${liveStats[fId].tr}  ID:${liveStats[fId].td - liveStats[fId].tr >= 0 ? '+' : ''}${liveStats[fId].td - liveStats[fId].tr}  RG:${liveRank[fId] ?? '?'}`}
+                            >
+                              {liveStats[fId].v}/{liveStats[fId].m} {liveStats[fId].td}/{liveStats[fId].tr} {liveStats[fId].td - liveStats[fId].tr >= 0 ? '+' : ''}{liveStats[fId].td - liveStats[fId].tr} #{liveRank[fId] ?? '?'}
+                            </span>
+                          )}
+                          {/* Status badge + dropdown */}
+                          {stage.status !== 'done' && (
+                            <div className="relative">
+                              <button
+                                className={`text-xs font-medium ${statusColor} border border-current rounded px-1.5 py-0.5 hover:opacity-80`}
+                                title={statusLabel}
+                                onClick={e => {
+                                  if (statusMenuId === fId) { setStatusMenuId(null); setStatusMenuPos(null); return }
+                                  const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect()
+                                  setStatusMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+                                  setStatusMenuId(fId)
+                                }}
+                              >{statusIcon} {statusLabel}</button>
+                            </div>
+                          )}
+                          {stage.status === 'done' && fencerStatus !== 'ok' && (
+                            <span className={`text-xs font-medium ${statusColor}`}>{statusIcon}</span>
+                          )}
+                        </div>
                       </li>
                     )
                   })}
