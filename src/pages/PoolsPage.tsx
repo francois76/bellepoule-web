@@ -22,7 +22,6 @@ export default function PoolsPage() {
   const [poolCountInput, setPoolCountInput] = useState('')
   const [seedingBalanced, setSeedingBalanced] = useState(true)
   const [swapCriteria, setSwapCriteria] = useState<Array<'club' | 'country' | 'league'>>(['club'])
-  const [showSheets, setShowSheets] = useState(false)
   const [poolSizeInput, setPoolSizeInput] = useState('6')
   const [latecomerModal, setLatecomerModal] = useState(false)
   const [latecomerFencerId, setLatecomerFencerId] = useState('')
@@ -179,14 +178,9 @@ export default function PoolsPage() {
             </button>
           )}
           {stage.pools.length > 0 && (
-            <>
-              <button className="btn-secondary" onClick={() => setShowSheets(s => !s)}>
-                📋 {showSheets ? 'Masquer feuilles' : 'Feuilles de poule'}
-              </button>
-              <button className="btn-secondary" onClick={() => window.print()}>
-                🖨️ Imprimer
-              </button>
-            </>
+            <button className="btn-secondary" onClick={() => window.print()}>
+              🖨️ Imprimer
+            </button>
           )}
           {stage.status === 'done' && !hasLaterStageStarted && (
             <button className="btn-secondary"
@@ -502,10 +496,9 @@ export default function PoolsPage() {
         </div>
       )}
 
-      {/* Pool score sheets — toggle on screen, always in print */}
+      {/* Pool score sheets — print only */}
       {stage.pools.length > 0 && (
-        <div className="pool-sheets-wrapper" style={showSheets ? {} : { display: 'none' }}>
-          <h2 className="print:hidden font-semibold text-gray-700 mb-3">Feuilles de poule</h2>
+        <div className="pool-sheets-wrapper hidden print:block">
           {stage.pools.map(p => (
             <PoolScoreSheet
               key={p.id}
