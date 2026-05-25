@@ -23,12 +23,9 @@ jobs:
 
       - name: Setup Node
         uses: actions/setup-node@v6
-        with:
-          node-version: 25
-          cache: npm
 
       - name: Install dependencies
-        run: npm -v &&npm ci
+        run: npm ci
 
       - name: Build
         run: npm run build
