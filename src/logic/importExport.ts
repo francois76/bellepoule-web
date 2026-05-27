@@ -72,53 +72,60 @@ export function importTournamentJSON(file: File): Promise<Tournament> {
  * Gender: 'H' or 'M' = male, 'F' or 'D' = female
  * Note: some files wrap long lines — join continuation lines first.
  */
-export function importFFF(text: string): Fencer[] {
-  // Rejoin lines that are continuations (don't start with a letter after a name field)
+
+function isStandaloneFFFRecord(line: string): boolean {
+  return (
+    line.startsWith('FFF') ||
+    /^\d{2}\/\d{2}\/\d{4}/.test(line) ||
+    /^[A-ZÀÂÄÉÈÊËÎÏÔÙÛÜ\- ]+,/.test(line)
+  )
+}
+
+function normalizeFFFLines(text: string): string[] {
   const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-  // Merge wrapped lines: a continuation line has no ';' in the personal fields area
-  // Strategy: join any line that doesn't look like a standalone record or header
   const lines: string[] = []
   for (const rawLine of normalized.split('\n')) {
     const line = rawLine.trimEnd()
     if (!line) continue
-    if (
-      line.startsWith('FFF') ||
-      /^\d{2}\/\d{2}\/\d{4}/.test(line) ||
-      /^[A-ZÀÂÄÉÈÊËÎÏÔÙÛÜ\- ]+,/.test(line) // starts with uppercase name
-    ) {
+    if (isStandaloneFFFRecord(line)) {
       lines.push(line)
     } else if (lines.length > 0) {
-      // continuation of previous line
       lines[lines.length - 1] += line
     }
   }
+  return lines
+}
 
-  const fencers: Fencer[] = []
-  for (const line of lines) {
-    if (!line || line.startsWith('FFF') || /^\d{2}\/\d{2}\/\d{4}/.test(line)) continue
-    const parts = line.split(';')
-    const personal = parts[0]?.split(',')
-    if (!personal || personal.length < 4) continue
-    const [lastName, firstName, birthDate, gender, country] = personal
-    const clubFields = parts[2]?.split(',') ?? []
-    const [licenceNumber, league, club, rankStr] = clubFields
-    const bdp = birthDate?.trim().split('/') ?? []
-    const isoBirthDate = bdp.length === 3 ? `${bdp[2]}-${bdp[1].padStart(2, '0')}-${bdp[0].padStart(2, '0')}` : undefined
-    fencers.push({
-      id: nanoid(),
-      lastName: lastName?.trim() ?? '',
-      firstName: firstName?.trim() ?? '',
-      birthDate: isoBirthDate,
-      gender: (gender?.trim() === 'F' || gender?.trim() === 'D') ? 'F' : 'M',
-      club: club?.trim() || undefined,
-      country: country?.trim() || undefined,
-      licenceNumber: licenceNumber?.trim() || undefined,
-      league: league?.trim() || undefined,
-      initialRank: rankStr ? parseInt(rankStr) || undefined : undefined,
-      present: true,
-    })
+function parseFFFLine(line: string): Fencer | null {
+  if (!line || line.startsWith('FFF') || /^\d{2}\/\d{2}\/\d{4}/.test(line)) return null
+  const parts = line.split(';')
+  const personal = parts[0]?.split(',')
+  if (!personal || personal.length < 4) return null
+  const [lastName, firstName, birthDate, gender, country] = personal
+  const clubFields = parts[2]?.split(',') ?? []
+  const [licenceNumber, league, club, rankStr] = clubFields
+  const bdp = birthDate?.trim().split('/') ?? []
+  const isoBirthDate = bdp.length === 3
+    ? `${bdp[2]}-${bdp[1].padStart(2, '0')}-${bdp[0].padStart(2, '0')}`
+    : undefined
+  return {
+    id: nanoid(),
+    lastName: lastName?.trim() ?? '',
+    firstName: firstName?.trim() ?? '',
+    birthDate: isoBirthDate,
+    gender: (gender?.trim() === 'F' || gender?.trim() === 'D') ? 'F' : 'M',
+    club: club?.trim() || undefined,
+    country: country?.trim() || undefined,
+    licenceNumber: licenceNumber?.trim() || undefined,
+    league: league?.trim() || undefined,
+    initialRank: rankStr ? parseInt(rankStr) || undefined : undefined,
+    present: true,
   }
-  return fencers
+}
+
+export function importFFF(text: string): Fencer[] {
+  const lines = normalizeFFFLines(text)
+  return lines.map(parseFFFLine).filter((f): f is Fencer => f !== null)
 }
 
 function parseTireurElement(t: Element, isCotcot: boolean): { fencer: Fencer; equipe: string | null } {

@@ -83,6 +83,11 @@ function validateBoutScore(scoreA: string, scoreB: string, maxScore: number): { 
   return { sa, sb }
 }
 
+function resolvePoolLiveStats(pool: Pool | undefined, selectedPool: number, maxScore: number): { stats: Record<string, LiveStat>; rankMap: Record<string, number> } {
+  if (!pool || selectedPool < 0) return { stats: {}, rankMap: {} }
+  return computePoolLiveStats(pool, maxScore)
+}
+
 function onEscapeKey(handler: () => void) {
   return (e: React.KeyboardEvent) => { if (e.key === 'Escape') handler() }
 }
@@ -336,8 +341,7 @@ export default function PoolsPage() {
   // Eligible latecomers: registered but not yet in any pool (regardless of present flag)
   const eligibleLatecomers = getEligibleLatecomers(contest, allocatedIds)
 
-  function openAllocateModal() {
-    if (!contest) return
+  const openAllocateModal = () => {
     const { defaultCount, defaultSize, seedingBalanced: balanced } = computeDefaultAllocation(contest, stageId, presentCount)
     setPoolCountInput(String(defaultCount))
     setPoolSizeInput(String(defaultSize))
@@ -345,25 +349,25 @@ export default function PoolsPage() {
     setAllocateModal(true)
   }
 
-  async function handleAddLatecomer() {
+  const handleAddLatecomer = async () => {
     await addLatecomer(tournamentId, contestId, stageId, latecomerFencerId)
     setLatecomerModal(false)
     setLatecomerFencerId('')
   }
 
-  async function handleAllocate(e: React.SubmitEvent<HTMLFormElement>) {
+  const handleAllocate = async (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault()
     const count = parseInt(poolCountInput)
     await allocatePoolPhase(tournamentId, contestId, stageId, count, seedingBalanced, swapCriteria)
     setAllocateModal(false)
   }
 
-  async function saveBout(boutId: string) {
+  const saveBout = async (boutId: string) => {
     if (!stage) return
     await doSaveBout(scoreA, scoreB, stage.maxScore, tournamentId, contestId, stageId, pool.id, boutId, setPoolBoutScore, setEditingBout, setScoreA, setScoreB)
   }
 
-  async function quickSaveBout(boutId: string, sa: number, sb: number) {
+  const quickSaveBout = async (boutId: string, sa: number, sb: number) => {
     await setPoolBoutScore(tournamentId, contestId, stageId, pool.id, boutId, sa, sb)
     setEditingBout(null)
     setScoreA('')
@@ -376,11 +380,7 @@ export default function PoolsPage() {
 
   const hasLaterStageStarted = isLaterStageStarted(contest, stageId)
 
-  const livePoolStats = pool && selectedPool >= 0
-    ? computePoolLiveStats(pool, stage.maxScore)
-    : null
-  const liveStats = livePoolStats?.stats ?? {} as Record<string, LiveStat>
-  const liveRank = livePoolStats?.rankMap ?? {} as Record<string, number>
+  const { stats: liveStats, rankMap: liveRank } = resolvePoolLiveStats(pool, selectedPool, stage.maxScore)
 
   const closeStatusMenu = () => { setStatusMenuId(null); setStatusMenuPos(null) }
   return (
