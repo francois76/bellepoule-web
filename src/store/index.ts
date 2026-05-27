@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
-import type { Tournament, Contest, Fencer, Referee, Team, PoolPhase, PoolBout, BarragePhase, TableauPhase, TableauBout, TableauSize, MatchResult, FencerPoolStatus, FencedPlaces } from '../types'
+import type { Tournament, Contest, Fencer, Referee, Team, Pool, PoolPhase, PoolBout, BarragePhase, TableauPhase, TableauBout, TableauSize, MatchResult, FencerPoolStatus, FencedPlaces } from '../types'
 import { getAllTournaments, saveTournament, deleteTournament } from '../db'
 import { allocatePools, applySeparationCriteria } from '../logic/pools'
 import { buildBracket, propagateByes } from '../logic/tableau'
@@ -349,9 +349,8 @@ export const useStore = create<AppState>((set, get) => ({
         const minTeamSize = c.minTeamSize ?? 3
         const team = c.teams.find(team => team.id === teamId)
         if (team) {
-          const presentCount = team.fencerIds.filter(fId =>
-            c.fencers.some(f => f.id === fId && f.present === true)
-          ).length
+          const presentFencerIds = new Set(c.fencers.filter(f => f.present === true).map(f => f.id))
+          const presentCount = team.fencerIds.filter(fId => presentFencerIds.has(fId)).length
           if (presentCount < minTeamSize) return c // no-op
         }
       }
@@ -414,14 +413,13 @@ export const useStore = create<AppState>((set, get) => ({
     // For team events, pools contain teams (not individual fencers)
     // Enforce minTeamSize: teams with fewer present members than minTeamSize are excluded
     const minTeamSize = contest.minTeamSize ?? 1
+    const presentFencerIds = new Set(contest.fencers.filter(f => f.present !== false).map(f => f.id))
     const participants = contest.isTeamEvent
       ? contest.teams
           .filter(team => team.present !== false)
           .filter(team => {
             if (!contest.isTeamEvent || minTeamSize <= 1) return true
-            const presentCount = team.fencerIds.filter(fId =>
-              contest.fencers.some(f => f.id === fId && f.present !== false)
-            ).length
+            const presentCount = team.fencerIds.filter(fId => presentFencerIds.has(fId)).length
             return presentCount >= minTeamSize
           })
           .map(team => ({ id: team.id, initialRank: team.initialRank }))
@@ -585,28 +583,20 @@ export const useStore = create<AppState>((set, get) => ({
   setPoolBoutScore: async (tournamentId, contestId, stageId, poolId, boutId, scoreA, scoreB) => {
     const { tournaments } = get()
     const t = getTournamentOrThrow(tournaments, tournamentId)
+    // FIE art. t.93 : victoire = atteindre le score max OU avoir
+    // le plus de touches quand le temps expire (résultat "à la montre").
+    // resultA/B dépend uniquement de qui a plus de touches.
+    const resultA: MatchResult = scoreA > scoreB ? 'V' : 'D'
+    const resultB: MatchResult = scoreB > scoreA ? 'V' : 'D'
+    const updatePool = (p: Pool): Pool => {
+      if (p.id !== poolId) return p
+      return { ...p, bouts: p.bouts.map(b => b.id !== boutId ? b : { ...b, scoreA, scoreB, resultA, resultB } as PoolBout) }
+    }
     const updated = mutateContest(t, contestId, c => ({
       ...c,
       stages: c.stages.map(s => {
         if (s.id !== stageId || s.type !== 'pool') return s
-        return {
-          ...s,
-          pools: (s as PoolPhase).pools.map(p => {
-            if (p.id !== poolId) return p
-            return {
-              ...p,
-              bouts: p.bouts.map(b => {
-                if (b.id !== boutId) return b
-                // FIE art. t.93 : victoire = atteindre le score max OU avoir
-                // le plus de touches quand le temps expire (résultat "à la montre").
-                // resultA/B dépend uniquement de qui a plus de touches.
-                const resultA: MatchResult = scoreA > scoreB ? 'V' : 'D'
-                const resultB: MatchResult = scoreB > scoreA ? 'V' : 'D'
-                return { ...b, scoreA, scoreB, resultA, resultB } as PoolBout
-              }),
-            }
-          }),
-        } as PoolPhase
+        return { ...s, pools: (s as PoolPhase).pools.map(updatePool) } as PoolPhase
       }),
     }))
     await saveTournament(updated)
@@ -616,30 +606,29 @@ export const useStore = create<AppState>((set, get) => ({
   setPoolBoutAbsent: async (tournamentId, contestId, stageId, poolId, boutId, absentSide) => {
     const { tournaments } = get()
     const t = getTournamentOrThrow(tournaments, tournamentId)
+    const contest = getContestOrThrow(t, contestId)
+    const maxScore = (contest.stages.find(s => s.id === stageId) as PoolPhase | undefined)?.maxScore ?? 0
+    const updatePool = (p: Pool): Pool => {
+      if (p.id !== poolId) return p
+      return {
+        ...p,
+        bouts: p.bouts.map(b => {
+          if (b.id !== boutId) return b
+          if (absentSide === 'A') {
+            if (b.resultA === 'A') return { ...b, scoreA: undefined, scoreB: undefined, resultA: undefined, resultB: undefined }
+            return { ...b, scoreA: 0, scoreB: maxScore, resultA: 'A' as MatchResult, resultB: 'V' as MatchResult }
+          } else {
+            if (b.resultB === 'A') return { ...b, scoreA: undefined, scoreB: undefined, resultA: undefined, resultB: undefined }
+            return { ...b, scoreA: maxScore, scoreB: 0, resultA: 'V' as MatchResult, resultB: 'A' as MatchResult }
+          }
+        }),
+      }
+    }
     const updated = mutateContest(t, contestId, c => ({
       ...c,
       stages: c.stages.map(s => {
         if (s.id !== stageId || s.type !== 'pool') return s
-        const maxScore = (s as PoolPhase).maxScore
-        return {
-          ...s,
-          pools: (s as PoolPhase).pools.map(p => {
-            if (p.id !== poolId) return p
-            return {
-              ...p,
-              bouts: p.bouts.map(b => {
-                if (b.id !== boutId) return b
-                if (absentSide === 'A') {
-                  if (b.resultA === 'A') return { ...b, scoreA: undefined, scoreB: undefined, resultA: undefined, resultB: undefined }
-                  return { ...b, scoreA: 0, scoreB: maxScore, resultA: 'A' as MatchResult, resultB: 'V' as MatchResult }
-                } else {
-                  if (b.resultB === 'A') return { ...b, scoreA: undefined, scoreB: undefined, resultA: undefined, resultB: undefined }
-                  return { ...b, scoreA: maxScore, scoreB: 0, resultA: 'V' as MatchResult, resultB: 'A' as MatchResult }
-                }
-              }),
-            }
-          }),
-        } as PoolPhase
+        return { ...s, pools: (s as PoolPhase).pools.map(updatePool) } as PoolPhase
       }),
     }))
     await saveTournament(updated)
@@ -798,18 +787,15 @@ export const useStore = create<AppState>((set, get) => ({
   setBarrageBoutScore: async (tournamentId, contestId, stageId, boutId, scoreA, scoreB) => {
     const { tournaments } = get()
     const t = getTournamentOrThrow(tournaments, tournamentId)
+    const resultA: MatchResult = scoreA > scoreB ? 'V' : 'D'
+    const resultB: MatchResult = scoreB > scoreA ? 'V' : 'D'
+    const updateBout = (b: PoolBout): PoolBout =>
+      b.id === boutId ? { ...b, scoreA, scoreB, resultA, resultB } : b
     const updated = mutateContest(t, contestId, c => ({
       ...c,
       stages: c.stages.map(s => {
         if (s.id !== stageId || s.type !== 'barrage') return s
-        const resultA: MatchResult = scoreA > scoreB ? 'V' : 'D'
-        const resultB: MatchResult = scoreB > scoreA ? 'V' : 'D'
-        return {
-          ...s,
-          bouts: (s as BarragePhase).bouts.map(b =>
-            b.id === boutId ? { ...b, scoreA, scoreB, resultA, resultB } : b
-          ),
-        } as BarragePhase
+        return { ...s, bouts: (s as BarragePhase).bouts.map(updateBout) } as BarragePhase
       }),
     }))
     await saveTournament(updated)
@@ -888,10 +874,11 @@ export const useStore = create<AppState>((set, get) => ({
   unlockTableauRound: async (tournamentId, contestId, stageId, round) => {
     const { tournaments } = get()
     const t = getTournamentOrThrow(tournaments, tournamentId)
+    const withoutRound = (r: number) => r !== round
     const updated = mutateContest(t, contestId, c => ({
       ...c,
       stages: c.stages.map(s => s.id === stageId && s.type === 'tableau'
-        ? { ...s, lockedRounds: (s.lockedRounds ?? []).filter(r => r !== round) } as TableauPhase
+        ? { ...s, lockedRounds: (s.lockedRounds ?? []).filter(withoutRound) } as TableauPhase
         : s),
     }))
     await saveTournament(updated)
