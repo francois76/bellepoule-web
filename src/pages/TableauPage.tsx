@@ -22,6 +22,169 @@ function roundLabelShort(round: number): string {
   return `T${round}`
 }
 
+function consolationLabel(bracketId: string): string {
+  const match = /cons-from-(\d+)/.exec(bracketId)
+  if (!match) return bracketId
+  const mainR = parseInt(match[1])
+  if (mainR === 8) return 'Places 5–8'
+  if (mainR === 16) return 'Places 9–16'
+  if (mainR === 32) return 'Places 17–32'
+  if (mainR === 64) return 'Places 33–64'
+  return `Places ${mainR/2+1}–${mainR}`
+}
+
+function roundSectionLabel(round: number, fencedPlaces: string): string {
+  if (round === 2) return (fencedPlaces === 'third_place' || fencedPlaces === 'all_places') ? 'Finales' : 'Finale'
+  if (round === 4) return 'Demi-finales'
+  if (round === 8) return 'Quarts de finale'
+  return `Tableau de ${round}`
+}
+
+function validateBoutScore(saNum: number, sbNum: number, maxScore: number): string | null {
+  if (isNaN(saNum) || isNaN(sbNum)) return null
+  if (saNum < 0 || sbNum < 0) return 'Score négatif impossible'
+  if (saNum > maxScore || sbNum > maxScore) return `Score max : ${maxScore}`
+  if (saNum === sbNum) return 'Égalité impossible en tableau'
+  return null
+}
+
+type RoundSectionProps = Readonly<{
+  round: number; stage: TableauPhase; rounds: number[]; lockedRounds: number[]; lastLockedRound: number | null
+  activeRound: number | undefined; isExpanded: boolean; onToggle: () => void
+  editingBoutId: string | null; scoreA: string; scoreB: string
+  onScoreAChange: (v: string) => void; onScoreBChange: (v: string) => void
+  onStartEdit: (bout: TableauBout) => void; onSaveBout: (boutId: string) => void
+  onCancelEdit: () => void; onQuickScore: (boutId: string, sa: number, sb: number) => void
+  onLockRound: (round: number) => void; onUnlockRound: (round: number) => void
+  onPrintRound: (round: number) => void; fencerName: (id?: string) => string
+  onFillRandom: (round: number) => void
+}>
+function RoundSection({ round, stage, rounds, lockedRounds, lastLockedRound, activeRound, isExpanded, onToggle, editingBoutId, scoreA, scoreB, onScoreAChange, onScoreBChange, onStartEdit, onSaveBout, onCancelEdit, onQuickScore, onLockRound, onUnlockRound, onPrintRound, fencerName, onFillRandom }: RoundSectionProps) {
+  const isFinalesSection = round === 2
+  const thirdPlaceBout = isFinalesSection && stage.fencedPlaces === 'third_place'
+    ? stage.bouts.find(b => b.round === 4 && b.boutIndex === 2)
+    : undefined
+  const roundBouts = stage.bouts
+    .filter(b => b.round === round && !(round === 4 && b.boutIndex === 2))
+    .sort((a, b) => a.boutIndex - b.boutIndex)
+  const label = roundSectionLabel(round, stage.fencedPlaces ?? 'none')
+  const isActive = round === activeRound
+  const isLocked = lockedRounds.includes(round)
+  const prevRoundOpen = rounds.includes(round * 2) && !lockedRounds.includes(round * 2)
+  const isLastLocked = round === lastLockedRound
+  const realBouts = roundBouts.filter(b => b.fencerAId && b.fencerBId)
+  const finalesExtra = thirdPlaceBout && thirdPlaceBout.fencerAId && thirdPlaceBout.fencerBId ? [thirdPlaceBout] : []
+  const allScoredBouts = [...realBouts, ...finalesExtra]
+  const allRoundScored = allScoredBouts.length > 0 && allScoredBouts.every(b => b.winnerId)
+  const boutRoundLocked = isLocked || prevRoundOpen || stage.status === 'done'
+  let textColor = 'text-gray-600'
+  if (isActive) { textColor = 'text-blue-700' } else if (isLocked) { textColor = 'text-gray-400' }
+
+  function renderBout(bout: TableauBout) {
+    return (
+      <BracketBout key={bout.id} bout={bout} nameA={fencerName(bout.fencerAId)} nameB={fencerName(bout.fencerBId)} maxScore={stage.maxScore} isEditing={editingBoutId === bout.id} scoreAInput={scoreA} scoreBInput={scoreB} onScoreAChange={onScoreAChange} onScoreBChange={onScoreBChange} onEdit={() => onStartEdit(bout)} onSave={() => onSaveBout(bout.id)} onCancel={onCancelEdit} onQuickScore={(sa, sb) => onQuickScore(bout.id, sa, sb)} roundLocked={boutRoundLocked} />
+    )
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <button className={`flex items-center gap-2 font-semibold text-lg text-left hover:opacity-80 transition-opacity ${textColor}`} onClick={onToggle}>
+          <span className="text-sm">{isExpanded ? '▾' : '▸'}</span>
+          {label}{isLocked && <span className="ml-1 text-xs font-normal">🔒</span>}
+        </button>
+        <div className="flex gap-2 ml-auto">
+          {import.meta.env.DEV && stage.status === 'running' && !isLocked && !prevRoundOpen && allScoredBouts.some(b => !b.winnerId) && (
+            <button className="text-xs py-1 px-2 rounded border border-orange-300 text-orange-700 hover:bg-orange-50 transition-colors" onClick={() => onFillRandom(round)}>🎲</button>
+          )}
+          {realBouts.length > 0 && stage.status === 'running' && (
+            <button className="btn-secondary text-xs py-1 px-2" onClick={() => onPrintRound(round)}>🖨️ Feuilles</button>
+          )}
+          {stage.status === 'running' && !isLocked && allRoundScored && (
+            <button className="text-xs py-1 px-2 rounded border border-green-300 text-green-700 hover:bg-green-50 transition-colors" onClick={() => onLockRound(round)}>🔒 Clôturer ce round</button>
+          )}
+          {stage.status === 'running' && isLastLocked && (
+            <button className="text-xs py-1 px-2 rounded border border-orange-300 text-orange-700 hover:bg-orange-50 transition-colors" onClick={() => onUnlockRound(round)}>🔓 Rouvrir</button>
+          )}
+        </div>
+      </div>
+      {isExpanded && (
+        <>
+          {thirdPlaceBout ? (
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Petite finale</p>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{renderBout(thirdPlaceBout)}</div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Finale</p>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{roundBouts.map(b => renderBout(b))}</div>
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{roundBouts.map(b => renderBout(b))}</div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+type ConsolationSectionProps = Readonly<{
+  bracketId: string; stage: TableauPhase
+  editingBoutId: string | null; scoreA: string; scoreB: string
+  onScoreAChange: (v: string) => void; onScoreBChange: (v: string) => void
+  onStartEdit: (bout: TableauBout) => void; onSaveBout: (boutId: string) => void
+  onCancelEdit: () => void; onQuickScore: (boutId: string, sa: number, sb: number) => void
+  fencerName: (id?: string) => string
+}>
+function ConsolationSection({ bracketId, stage, editingBoutId, scoreA, scoreB, onScoreAChange, onScoreBChange, onStartEdit, onSaveBout, onCancelEdit, onQuickScore, fencerName }: ConsolationSectionProps) {
+  const consBouts = stage.bouts.filter(b => b.bracket === bracketId)
+  const consRounds = Array.from(new Set(consBouts.map(b => b.round))).sort((a, b) => b - a)
+
+  function renderBout(bout: TableauBout) {
+    return (
+      <BracketBout key={bout.id} bout={bout} nameA={fencerName(bout.fencerAId)} nameB={fencerName(bout.fencerBId)} maxScore={stage.maxScore} isEditing={editingBoutId === bout.id} scoreAInput={scoreA} scoreBInput={scoreB} onScoreAChange={onScoreAChange} onScoreBChange={onScoreBChange} onEdit={() => onStartEdit(bout)} onSave={() => onSaveBout(bout.id)} onCancel={onCancelEdit} onQuickScore={(sa, sb) => onQuickScore(bout.id, sa, sb)} roundLocked={stage.status === 'done'} />
+    )
+  }
+
+  return (
+    <div className="space-y-4 border border-orange-100 rounded-lg p-4 bg-orange-50/40">
+      <h3 className="text-base font-semibold text-orange-700">{consolationLabel(bracketId)}</h3>
+      {consRounds.map(consRound => {
+        const isConsFinale = consRound === 2
+        const thirdPlace = consBouts.find(b => b.round === 4 && b.boutIndex === 2)
+        const roundBouts = consBouts
+          .filter(b => b.round === consRound && !(consRound === 4 && b.boutIndex === 2))
+          .sort((a, b) => a.boutIndex - b.boutIndex)
+        let consLabel: string
+        if (isConsFinale) { consLabel = 'Finale' } else if (consRound === 4) { consLabel = 'Demi-finales' } else { consLabel = `T${consRound}` }
+        return (
+          <div key={consRound}>
+            <p className="text-xs font-semibold uppercase tracking-wide text-orange-600 mb-2">{consLabel}</p>
+            {isConsFinale && thirdPlace ? (
+              <div className="space-y-4">
+                {(thirdPlace.fencerAId || thirdPlace.fencerBId) && (
+                  <div>
+                    <p className="text-xs text-orange-500 mb-1">Petite finale</p>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{renderBout(thirdPlace)}</div>
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs text-orange-500 mb-1">Finale</p>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{roundBouts.map(b => renderBout(b))}</div>
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{roundBouts.map(b => renderBout(b))}</div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function TableauPage() {
   const { tournamentId = '', contestId = '', stageId = '' } = useParams<{ tournamentId: string; contestId: string; stageId: string }>()
   const { tournaments, loaded, setTableauBoutScore, lockTableauPhase, unlockTableauPhase, lockTableauRound, unlockTableauRound, fillRandomTableauBouts } = useStore()
@@ -58,16 +221,6 @@ export default function TableauPage() {
 
   // Consolation bracket IDs and their labels
   const consolationBracketIds = Array.from(new Set(stage.bouts.filter(b => b.bracket?.startsWith('cons-from-')).map(b => b.bracket as string)))
-  function consolationLabel(bracketId: string): string {
-    const match = /cons-from-(\d+)/.exec(bracketId)
-    if (!match) return bracketId
-    const mainR = parseInt(match[1])
-    if (mainR === 8) return 'Places 5–8'
-    if (mainR === 16) return 'Places 9–16'
-    if (mainR === 32) return 'Places 17–32'
-    if (mainR === 64) return 'Places 33–64'
-    return `Places ${mainR/2+1}–${mainR}`
-  }
   const activeRound = rounds.find(round =>
     !lockedRounds.includes(round) &&
     stage.bouts.some(b => b.round === round && b.fencerAId && b.fencerBId)
@@ -133,27 +286,6 @@ export default function TableauPage() {
     }
   }
 
-  function renderConsBout(bout: TableauBout, stage: TableauPhase) {
-    return (
-      <BracketBout key={bout.id}
-        bout={bout}
-        nameA={fencerName(bout.fencerAId)}
-        nameB={fencerName(bout.fencerBId)}
-        maxScore={stage.maxScore}
-        isEditing={editingBout === bout.id}
-        scoreAInput={scoreA}
-        scoreBInput={scoreB}
-        onScoreAChange={setScoreA}
-        onScoreBChange={setScoreB}
-        onEdit={() => startEdit(bout)}
-        onSave={() => saveBout(bout.id)}
-        onCancel={() => setEditingBout(null)}
-        onQuickScore={(sa, sb) => quickSaveBout(bout.id, sa, sb)}
-        roundLocked={stage.status === 'done'}
-      />
-    )
-  }
-
   return (
     <div className="space-y-5">
       {/* Override @page to landscape for tableau printing, with extra bottom margin for browser footer */}
@@ -212,183 +344,20 @@ export default function TableauPage() {
       )}
 
       <div className="space-y-8 overflow-x-auto print:hidden">
-        {rounds.map(round => {
-          // 3rd place bout lives at round=4 boutIndex=2 but is displayed in the "Finales" section
-          const isFinalesSection = round === 2
-          const thirdPlaceBout = isFinalesSection && stage.fencedPlaces === 'third_place'
-            ? stage.bouts.find(b => b.round === 4 && b.boutIndex === 2)
-            : undefined
-
-          // For demi-finales (round=4): exclude the 3rd place bout from display
-          const roundBouts = stage.bouts
-            .filter(b => b.round === round && !(round === 4 && b.boutIndex === 2))
-            .sort((a, b) => a.boutIndex - b.boutIndex)
-
-          let label: string
-          if (round === 2) {
-            label = (stage.fencedPlaces === 'third_place' || stage.fencedPlaces === 'all_places') ? 'Finales' : 'Finale'
-          } else if (round === 4) {
-            label = 'Demi-finales'
-          } else if (round === 8) {
-            label = 'Quarts de finale'
-          } else {
-            label = `Tableau de ${round}`
-          }
-          const isActive = round === activeRound
-          const isLocked = lockedRounds.includes(round)
-          const prevRoundOpen = rounds.includes(round * 2) && !lockedRounds.includes(round * 2)
-          const isLastLocked = round === lastLockedRound
-
-          const realBouts = roundBouts.filter(b => b.fencerAId && b.fencerBId)
-          // allRoundScored must include 3rd place bout in the Finales section
-          const finalesExtra = thirdPlaceBout && thirdPlaceBout.fencerAId && thirdPlaceBout.fencerBId ? [thirdPlaceBout] : []
-          const allScoredBouts = [...realBouts, ...finalesExtra]
-          const allRoundScored = allScoredBouts.length > 0 && allScoredBouts.every(b => b.winnerId)
-
-          const isExpanded = effectiveExpanded.has(round)
-          const boutRoundLocked = isLocked || prevRoundOpen || stage.status === 'done'
-          const stageMaxScore = stage.maxScore
-
-          function renderBout(bout: import('../types').TableauBout) {
-            return (
-              <BracketBout key={bout.id}
-                bout={bout}
-                nameA={fencerName(bout.fencerAId)}
-                nameB={fencerName(bout.fencerBId)}
-                maxScore={stageMaxScore}
-                isEditing={editingBout === bout.id}
-                scoreAInput={scoreA}
-                scoreBInput={scoreB}
-                onScoreAChange={setScoreA}
-                onScoreBChange={setScoreB}
-                onEdit={() => startEdit(bout)}
-                onSave={() => saveBout(bout.id)}
-                onCancel={() => setEditingBout(null)}
-                onQuickScore={(sa, sb) => quickSaveBout(bout.id, sa, sb)}
-                roundLocked={boutRoundLocked}
-              />
-            )
-          }
-
-          return (
-            <div key={round}>
-              <div className="flex items-center gap-2 mb-3 flex-wrap">
-                <button
-                  className={(() => {
-                    let textColor = 'text-gray-600'
-                    if (isActive) { textColor = 'text-blue-700' } else if (isLocked) { textColor = 'text-gray-400' }
-                    return `flex items-center gap-2 font-semibold text-lg text-left hover:opacity-80 transition-opacity ${textColor}`
-                  })()}
-                  onClick={() => toggleRound(round)}
-                >
-                  <span className="text-sm">{isExpanded ? '▾' : '▸'}</span>
-                  {label}{isLocked && <span className="ml-1 text-xs font-normal">🔒</span>}
-                </button>
-                <div className="flex gap-2 ml-auto">
-                  {import.meta.env.DEV && stage.status === 'running' && !isLocked && !prevRoundOpen && allScoredBouts.some(b => !b.winnerId) && (
-                    <button className="text-xs py-1 px-2 rounded border border-orange-300 text-orange-700 hover:bg-orange-50 transition-colors"
-                      onClick={() => fillRandomTableauBouts(tournamentId, contestId, stageId, round)}>
-                      🎲
-                    </button>
-                  )}
-                  {realBouts.length > 0 && stage.status === 'running' && (
-                    <button className="btn-secondary text-xs py-1 px-2"
-                      onClick={() => printRound(round)}>
-                      🖨️ Feuilles
-                    </button>
-                  )}
-                  {stage.status === 'running' && !isLocked && allRoundScored && (
-                    <button className="text-xs py-1 px-2 rounded border border-green-300 text-green-700 hover:bg-green-50 transition-colors"
-                      onClick={() => handleLockRound(round)}>
-                      🔒 Clôturer ce round
-                    </button>
-                  )}
-                  {stage.status === 'running' && isLastLocked && (
-                    <button className="text-xs py-1 px-2 rounded border border-orange-300 text-orange-700 hover:bg-orange-50 transition-colors"
-                      onClick={() => unlockTableauRound(tournamentId, contestId, stageId, round)}>
-                      🔓 Rouvrir
-                    </button>
-                  )}
-                </div>
-              </div>
-              {isExpanded && (
-                <>
-                  {thirdPlaceBout ? (
-                    <div className="space-y-4">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Petite finale</p>
-                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                          {renderBout(thirdPlaceBout)}
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Finale</p>
-                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                          {roundBouts.map(bout => renderBout(bout))}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                      {roundBouts.map(bout => renderBout(bout))}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )
-        })}
+        {rounds.map(round => (
+          <RoundSection key={round} round={round} stage={stage} rounds={rounds} lockedRounds={lockedRounds} lastLockedRound={lastLockedRound} activeRound={activeRound} isExpanded={effectiveExpanded.has(round)} onToggle={() => toggleRound(round)} editingBoutId={editingBout} scoreA={scoreA} scoreB={scoreB} onScoreAChange={setScoreA} onScoreBChange={setScoreB} onStartEdit={startEdit} onSaveBout={saveBout} onCancelEdit={() => setEditingBout(null)} onQuickScore={quickSaveBout} onLockRound={handleLockRound} onUnlockRound={r => unlockTableauRound(tournamentId, contestId, stageId, r)} onPrintRound={printRound} fencerName={fencerName} onFillRandom={r => fillRandomTableauBouts(tournamentId, contestId, stageId, r)} />
+        ))}
       </div>
+
+
 
       {/* ─── Consolation brackets (all_places) ─── */}
       {consolationBracketIds.length > 0 && (
         <div className="print:hidden space-y-6">
           <h2 className="text-lg font-bold text-orange-800 border-b border-orange-200 pb-2">Tableaux de consolation</h2>
-          {consolationBracketIds.map(bracketId => {
-            const consBouts = stage.bouts.filter(b => b.bracket === bracketId)
-            const consRounds = Array.from(new Set(consBouts.map(b => b.round))).sort((a, b) => b - a)
-            return (
-              <div key={bracketId} className="space-y-4 border border-orange-100 rounded-lg p-4 bg-orange-50/40">
-                <h3 className="text-base font-semibold text-orange-700">{consolationLabel(bracketId)}</h3>
-                {consRounds.map(consRound => {
-                  const isConsFinale = consRound === 2
-                  const thirdPlace = consBouts.find(b => b.round === 4 && b.boutIndex === 2)
-                  const roundBouts = consBouts
-                    .filter(b => b.round === consRound && !(consRound === 4 && b.boutIndex === 2))
-                    .sort((a, b) => a.boutIndex - b.boutIndex)
-                  let consLabel: string
-                  if (isConsFinale) { consLabel = 'Finale' } else if (consRound === 4) { consLabel = 'Demi-finales' } else { consLabel = `T${consRound}` }
-                  return (
-                    <div key={consRound}>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-orange-600 mb-2">{consLabel}</p>
-                      {isConsFinale && thirdPlace ? (
-                        <div className="space-y-4">
-                          {thirdPlace.fencerAId || thirdPlace.fencerBId ? (
-                            <div>
-                              <p className="text-xs text-orange-500 mb-1">Petite finale</p>
-                              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                                {renderConsBout(thirdPlace,stage)}
-                              </div>
-                            </div>
-                          ) : null}
-                          <div>
-                            <p className="text-xs text-orange-500 mb-1">Finale</p>
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                              {roundBouts.map(bout => renderConsBout(bout,stage))}
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                          {roundBouts.map(bout => renderConsBout(bout,stage))}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })}
+          {consolationBracketIds.map(bracketId => (
+            <ConsolationSection key={bracketId} bracketId={bracketId} stage={stage} editingBoutId={editingBout} scoreA={scoreA} scoreB={scoreB} onScoreAChange={setScoreA} onScoreBChange={setScoreB} onStartEdit={startEdit} onSaveBout={saveBout} onCancelEdit={() => setEditingBout(null)} onQuickScore={quickSaveBout} fencerName={fencerName} />
+          ))}
         </div>
       )}
 
@@ -630,6 +599,22 @@ function BracketPrint({ stage, fencerName, contest, tournament }: Readonly<Print
   )
 }
 
+function BoutFencerRow({ isWinner, isBye, name, score, isEditing, scoreInput, onScoreChange, canEdit, err, maxScore, winButtonLabel, winButtonClass, isTop, onOpenPopup }: Readonly<{ isWinner: boolean; isBye: boolean; name: string; score: number | undefined; isEditing: boolean; scoreInput: string; onScoreChange: (v: string) => void; canEdit: boolean; err: string | null; maxScore: number; winButtonLabel: string; winButtonClass: string; isTop: boolean; onOpenPopup: (btn: HTMLButtonElement) => void }>) {
+  const rowClass = `flex items-center justify-between px-3 py-2 ${isTop ? 'rounded-t-lg' : ''} ${isWinner ? 'bg-green-50' : ''} ${isBye ? 'opacity-40 italic' : ''}`
+  return (
+    <div className={rowClass}>
+      <span className={`text-sm truncate ${isWinner ? 'font-bold text-green-700' : 'text-gray-700'}`}>{name}</span>
+      <div className="flex items-center gap-1 shrink-0 ml-2">
+        {isEditing
+          ? <input type="number" min="0" max={maxScore} value={scoreInput} onChange={e => onScoreChange(e.target.value)} className={`w-10 text-center border rounded px-1 py-0.5 text-sm ${err ? 'border-red-400 bg-red-50' : ''}`} />
+          : score !== undefined && <span className={`text-sm font-mono font-bold ${isWinner ? 'text-green-700' : 'text-gray-500'}`}>{score}</span>
+        }
+        {canEdit && <button className={`text-xs px-1.5 py-0.5 rounded border font-medium ${winButtonClass}`} onClick={e => onOpenPopup(e.currentTarget)}>{winButtonLabel}</button>}
+      </div>
+    </div>
+  )
+}
+
 const QuickPopup = ({ scores, colorClass, popupPos, handleQuick }: {
   scores: { sa: number; sb: number }[]
   colorClass: string
@@ -676,13 +661,7 @@ function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, sco
 
   const saNum = parseInt(scoreAInput)
   const sbNum = parseInt(scoreBInput)
-  const err = isEditing ? (() => {
-    if (isNaN(saNum) || isNaN(sbNum)) return null
-    if (saNum < 0 || sbNum < 0) return 'Score n\u00e9gatif impossible'
-    if (saNum > maxScore || sbNum > maxScore) return `Score max\u00a0: ${maxScore}`
-    if (saNum === sbNum) return '\u00c9galit\u00e9 impossible en tableau'
-    return null
-  })() : null
+  const err = isEditing ? validateBoutScore(saNum, sbNum, maxScore) : null
 
   const quickScoresA = Array.from({ length: maxScore }, (_, i) => ({ sa: maxScore, sb: i }))
   const quickScoresB = Array.from({ length: maxScore }, (_, i) => ({ sa: i, sb: maxScore }))
@@ -716,41 +695,9 @@ function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, sco
           handleQuick={handleQuick}
         />
       )}
-
-      {/* Row A */}
-      <div className={`flex items-center justify-between px-3 py-2 rounded-t-lg ${isWinnerA ? 'bg-green-50' : ''} ${isByeA ? 'opacity-40 italic' : ''}`}>
-        <span className={`text-sm truncate ${isWinnerA ? 'font-bold text-green-700' : 'text-gray-700'}`}>{nameA}</span>
-        <div className="flex items-center gap-1 shrink-0 ml-2">
-          {isEditing
-            ? <input type="number" min="0" max={maxScore} value={scoreAInput} onChange={e => onScoreAChange(e.target.value)}
-                className={`w-10 text-center border rounded px-1 py-0.5 text-sm ${err ? 'border-red-400 bg-red-50' : ''}`} />
-            : bout.scoreA !== undefined && <span className={`text-sm font-mono font-bold ${isWinnerA ? 'text-green-700' : 'text-gray-500'}`}>{bout.scoreA}</span>
-          }
-          {canEdit && (
-            <button className="text-xs px-1.5 py-0.5 rounded border font-medium bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
-              onClick={e => openPopup('A', e.currentTarget)} title="Victoire haut">V&#9662;</button>
-          )}
-        </div>
-      </div>
-
+      <BoutFencerRow isWinner={isWinnerA} isBye={isByeA} name={nameA} score={bout.scoreA} isEditing={isEditing} scoreInput={scoreAInput} onScoreChange={onScoreAChange} canEdit={canEdit} err={err} maxScore={maxScore} winButtonLabel="V▾" winButtonClass="bg-green-50 text-green-700 border-green-200 hover:bg-green-100" isTop={true} onOpenPopup={btn => openPopup('A', btn)} />
       <div className="border-t border-gray-200" />
-
-      {/* Row B */}
-      <div className={`flex items-center justify-between px-3 py-2 ${!canEdit && !isEditing ? 'rounded-b-lg' : ''} ${isWinnerB ? 'bg-green-50' : ''} ${isByeB ? 'opacity-40 italic' : ''}`}>
-        <span className={`text-sm truncate ${isWinnerB ? 'font-bold text-green-700' : 'text-gray-700'}`}>{nameB}</span>
-        <div className="flex items-center gap-1 shrink-0 ml-2">
-          {isEditing
-            ? <input type="number" min="0" max={maxScore} value={scoreBInput} onChange={e => onScoreBChange(e.target.value)}
-                className={`w-10 text-center border rounded px-1 py-0.5 text-sm ${err ? 'border-red-400 bg-red-50' : ''}`} />
-            : bout.scoreB !== undefined && <span className={`text-sm font-mono font-bold ${isWinnerB ? 'text-green-700' : 'text-gray-500'}`}>{bout.scoreB}</span>
-          }
-          {canEdit && (
-            <button className="text-xs px-1.5 py-0.5 rounded border font-medium bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
-              onClick={e => openPopup('B', e.currentTarget)} title="Victoire bas">&#9662;V</button>
-          )}
-        </div>
-      </div>
-
+      <BoutFencerRow isWinner={isWinnerB} isBye={isByeB} name={nameB} score={bout.scoreB} isEditing={isEditing} scoreInput={scoreBInput} onScoreChange={onScoreBChange} canEdit={canEdit} err={err} maxScore={maxScore} winButtonLabel="▾V" winButtonClass="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100" isTop={false} onOpenPopup={btn => openPopup('B', btn)} />
       {isEditing && (
         <div className="flex items-center justify-end gap-1 px-3 py-1.5 border-t border-gray-200">
           {err && <p className="text-xs text-red-600 mr-auto">{err}</p>}
@@ -758,7 +705,6 @@ function BracketBout({ bout, nameA, nameB, maxScore, isEditing, scoreAInput, sco
           <button className="btn-secondary text-xs py-0.5 px-2" onClick={onCancel}>&#10005;</button>
         </div>
       )}
-
       {!isEditing && canEdit && (
         <button onClick={onEdit} className="print:hidden w-full text-center text-xs text-blue-500 hover:text-blue-700 py-1 border-t border-gray-100 hover:bg-blue-50 transition-colors rounded-b-lg">
           {hasResult ? 'Modifier le score' : 'Saisir le score'}
