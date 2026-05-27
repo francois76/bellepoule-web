@@ -926,6 +926,40 @@ export const useStore = create<AppState>((set, get) => ({
 
 import type { PoolStageResult } from '../types'
 
+function applyBoutToTotals(
+  a: PoolStageResult,
+  b: PoolStageResult,
+  bout: PoolBout,
+  maxScore: number,
+): void {
+  a.bouts++
+  b.bouts++
+  if (bout.resultA === 'A') {
+    b.victories++
+    b.touchesScored += maxScore
+    a.touchesReceived += maxScore
+  } else if (bout.resultB === 'A') {
+    a.victories++
+    a.touchesScored += maxScore
+    b.touchesReceived += maxScore
+  } else {
+    a.touchesScored += bout.scoreA ?? 0
+    a.touchesReceived += bout.scoreB ?? 0
+    b.touchesScored += bout.scoreB ?? 0
+    b.touchesReceived += bout.scoreA ?? 0
+    if (bout.resultA === 'V') a.victories++
+    if (bout.resultB === 'V') b.victories++
+  }
+}
+
+function comparePoolResults(a: PoolStageResult, b: PoolStageResult): number {
+  const ratioA = a.bouts > 0 ? Math.floor(a.victories * 1000 / a.bouts) : 0
+  const ratioB = b.bouts > 0 ? Math.floor(b.victories * 1000 / b.bouts) : 0
+  if (ratioB !== ratioA) return ratioB - ratioA
+  if (b.index !== a.index) return b.index - a.index
+  return b.touchesScored - a.touchesScored
+}
+
 function computePoolResults(phase: PoolPhase): PoolStageResult[] {
   const totals: Record<string, PoolStageResult> = {}
 
@@ -937,27 +971,7 @@ function computePoolResults(phase: PoolPhase): PoolStageResult[] {
       const a = totals[bout.fencerAId]
       const b = totals[bout.fencerBId]
       if (!a || !b) continue
-      if (bout.resultA === 'A') {
-        // Fencer A absent: B gets V+maxScore, A gets D0
-        a.bouts++; b.bouts++
-        b.victories++
-        b.touchesScored += phase.maxScore
-        a.touchesReceived += phase.maxScore
-      } else if (bout.resultB === 'A') {
-        // Fencer B absent: A gets V+maxScore, B gets D0
-        a.bouts++; b.bouts++
-        a.victories++
-        a.touchesScored += phase.maxScore
-        b.touchesReceived += phase.maxScore
-      } else {
-        a.bouts++; b.bouts++
-        a.touchesScored += bout.scoreA ?? 0
-        a.touchesReceived += bout.scoreB ?? 0
-        b.touchesScored += bout.scoreB ?? 0
-        b.touchesReceived += bout.scoreA ?? 0
-        if (bout.resultA === 'V') a.victories++
-        if (bout.resultB === 'V') b.victories++
-      }
+      applyBoutToTotals(a, b, bout, phase.maxScore)
     }
   }
 
@@ -965,13 +979,7 @@ function computePoolResults(phase: PoolPhase): PoolStageResult[] {
 
   // FIE t.116 / BellePoule: sort by V/M ratio (‰), then index (TD-TR), then TD
   // Using integer ratio (×1000) like BellePoule to avoid float precision issues
-  entries.sort((a, b) => {
-    const ratioA = a.bouts > 0 ? Math.floor(a.victories * 1000 / a.bouts) : 0
-    const ratioB = b.bouts > 0 ? Math.floor(b.victories * 1000 / b.bouts) : 0
-    if (ratioB !== ratioA) return ratioB - ratioA
-    if (b.index !== a.index) return b.index - a.index
-    return b.touchesScored - a.touchesScored
-  })
+  entries.sort(comparePoolResults)
 
   const total = entries.length
   const qualifiedCount = Math.round(total * phase.promotionPercent / 100)
@@ -1022,6 +1030,48 @@ function getSeedOrder(contest: Contest): string[] {
 
 // ─── Bracket advancement ──────────────────────────────────────────────────────
 
+function advanceWinner(bouts: TableauBout[], bout: TableauBout, winnerId: string | undefined): TableauBout[] {
+  const nextRound = Math.floor(bout.round / 2)
+  if (nextRound < 1) return bouts
+  const nextBoutIndex = Math.floor(bout.boutIndex / 2)
+  const isSlotA = bout.boutIndex % 2 === 0
+  return bouts.map(b => {
+    if (b.round !== nextRound || b.boutIndex !== nextBoutIndex || b.bracket !== bout.bracket) return b
+    return isSlotA ? { ...b, fencerAId: winnerId } : { ...b, fencerBId: winnerId }
+  })
+}
+
+function routeLoserToThirdPlace(bouts: TableauBout[], bout: TableauBout, loserId: string | undefined): TableauBout[] {
+  if (bout.bracket || bout.round !== 4 || bout.boutIndex > 1) return bouts
+  if (!loserId || !bouts.some(b => !b.bracket && b.round === 4 && b.boutIndex === 2)) return bouts
+  return bouts.map(b => {
+    if (b.bracket || b.round !== 4 || b.boutIndex !== 2) return b
+    const cleared = { ...b, winnerId: undefined, scoreA: undefined, scoreB: undefined }
+    return bout.boutIndex === 0 ? { ...cleared, fencerAId: loserId } : { ...cleared, fencerBId: loserId }
+  })
+}
+
+function routeLoserToConsolation(bouts: TableauBout[], bout: TableauBout, loserId: string | undefined): TableauBout[] {
+  if (bout.bracket || bout.round < 8 || !loserId) return bouts
+  const bracketId = `cons-from-${bout.round}`
+  const consRound = bout.round / 2
+  const consBoutIndex = Math.floor(bout.boutIndex / 2)
+  const consSlotA = bout.boutIndex % 2 === 0
+  return bouts.map(b => {
+    if (b.bracket !== bracketId || b.round !== consRound || b.boutIndex !== consBoutIndex) return b
+    return consSlotA ? { ...b, fencerAId: loserId } : { ...b, fencerBId: loserId }
+  })
+}
+
+function routeConsLoserToThirdPlace(bouts: TableauBout[], bout: TableauBout, loserId: string | undefined): TableauBout[] {
+  if (!bout.bracket?.startsWith('cons-from-') || bout.round !== 4 || bout.boutIndex > 1 || !loserId) return bouts
+  return bouts.map(b => {
+    if (b.bracket !== bout.bracket || b.round !== 4 || b.boutIndex !== 2) return b
+    const cleared = { ...b, winnerId: undefined, scoreA: undefined, scoreB: undefined }
+    return bout.boutIndex === 0 ? { ...cleared, fencerAId: loserId } : { ...cleared, fencerBId: loserId }
+  })
+}
+
 function advanceBracket(bouts: TableauBout[], boutId: string, scoreA: number, scoreB: number, _maxScore: number): TableauBout[] {
   const bout = bouts.find(b => b.id === boutId)
   if (!bout) return bouts
@@ -1029,73 +1079,11 @@ function advanceBracket(bouts: TableauBout[], boutId: string, scoreA: number, sc
   const loserId = scoreA > scoreB ? bout.fencerBId : bout.fencerAId
   const resultA: import('../types').MatchResult = scoreA > scoreB ? 'V' : 'D'
   const resultB: import('../types').MatchResult = scoreB > scoreA ? 'V' : 'D'
-  const updated = bouts.map(b => b.id === boutId ? { ...b, scoreA, scoreB, resultA, resultB, winnerId } : b)
 
-  const isMainBout = !bout.bracket
-  const isConsBout = !!bout.bracket?.startsWith('cons-from-')
-
-  // Advance winner to next round bout
-  const nextRound = Math.floor(bout.round / 2)
-  const nextBoutIndex = Math.floor(bout.boutIndex / 2)
-  const isSlotA = bout.boutIndex % 2 === 0
-
-  let result = updated
-
-  if (nextRound >= 1) {
-    // For main bouts, only advance within main bracket (no bracket field)
-    // For consolation bouts, advance within same consolation bracket
-    result = result.map(b => {
-      if (b.round === nextRound && b.boutIndex === nextBoutIndex && b.bracket === bout.bracket) {
-        return isSlotA
-          ? { ...b, fencerAId: winnerId }
-          : { ...b, fencerBId: winnerId }
-      }
-      return b
-    })
-  }
-
-  // Route loser to 3rd place bout if this is a semi-final (round=4, boutIndex 0 or 1) in MAIN bracket
-  if (isMainBout && bout.round === 4 && (bout.boutIndex === 0 || bout.boutIndex === 1)) {
-    const hasThirdPlace = result.some(b => !b.bracket && b.round === 4 && b.boutIndex === 2)
-    if (hasThirdPlace && loserId) {
-      result = result.map(b => {
-        if (!b.bracket && b.round === 4 && b.boutIndex === 2) {
-          return bout.boutIndex === 0
-            ? { ...b, fencerAId: loserId, winnerId: undefined, scoreA: undefined, scoreB: undefined }
-            : { ...b, fencerBId: loserId, winnerId: undefined, scoreA: undefined, scoreB: undefined }
-        }
-        return b
-      })
-    }
-  }
-
-  // Route loser from main bout (round >= 8) into consolation bracket
-  if (isMainBout && bout.round >= 8 && loserId) {
-    const bracketId = `cons-from-${bout.round}`
-    const consRound = bout.round / 2
-    const consBoutIndex = Math.floor(bout.boutIndex / 2)
-    const consSlotA = bout.boutIndex % 2 === 0
-    result = result.map(b => {
-      if (b.bracket === bracketId && b.round === consRound && b.boutIndex === consBoutIndex) {
-        return consSlotA
-          ? { ...b, fencerAId: loserId }
-          : { ...b, fencerBId: loserId }
-      }
-      return b
-    })
-  }
-
-  // Route loser from consolation semi-final (round=4, boutIndex 0 or 1) to cons 3rd place
-  if (isConsBout && bout.round === 4 && (bout.boutIndex === 0 || bout.boutIndex === 1) && loserId) {
-    result = result.map(b => {
-      if (b.bracket === bout.bracket && b.round === 4 && b.boutIndex === 2) {
-        return bout.boutIndex === 0
-          ? { ...b, fencerAId: loserId, winnerId: undefined, scoreA: undefined, scoreB: undefined }
-          : { ...b, fencerBId: loserId, winnerId: undefined, scoreA: undefined, scoreB: undefined }
-      }
-      return b
-    })
-  }
-
+  let result = bouts.map(b => b.id === boutId ? { ...b, scoreA, scoreB, resultA, resultB, winnerId } : b)
+  result = advanceWinner(result, bout, winnerId)
+  result = routeLoserToThirdPlace(result, bout, loserId)
+  result = routeLoserToConsolation(result, bout, loserId)
+  result = routeConsLoserToThirdPlace(result, bout, loserId)
   return result
 }
