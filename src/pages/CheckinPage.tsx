@@ -11,7 +11,13 @@ const DEV_LAST_NAMES = ['Martin','Bernard','Dubois','Thomas','Robert','Richard',
 const DEV_FIRST_NAMES = ['Hugo','Lucas','Léo','Louis','Gabriel','Noah','Raphaël','Arthur','Ethan','Alexandre','Léa','Emma','Chloé','Manon','Inès','Alice','Camille','Julie','Lucie','Anaïs']
 const DEV_CLUBS = ['CSM Clamart','Châlons','Rodez','Paris UC','Grenoble Escrime','Bordeaux EC','Toulouse Escrime','Lyon AE','Nantes EC','Rennes EA']
 
-const EMPTY_FENCER_FORM = { lastName: '', firstName: '', gender: 'M' as 'M' | 'F', club: '', birthDate: '', licenceNumber: '', initialRank: '' }
+const FENCER_GENDERS = [
+  { value: 'M', label: 'Masculin' },
+  { value: 'F', label: 'Feminin' },
+  { value: 'X', label: 'Non binaire' },
+] as const
+
+const EMPTY_FENCER_FORM = { lastName: '', firstName: '', gender: '' as '' | import('../types').FencerGender, club: '', birthDate: '', licenceNumber: '', initialRank: '' }
 const EMPTY_TEAM_FORM = { name: '', club: '', initialRank: '', fencerIds: [] as string[], rankingMode: 'auto' as 'auto' | 'manual' }
 
 function cmp<T>(a: T, b: T, dir: 'asc' | 'desc') {
@@ -31,6 +37,7 @@ function sortArrow(col: string, sort: { key: string; dir: 'asc' | 'desc' }) {
 function validateFencer(f: typeof EMPTY_FENCER_FORM, displayConfig: typeof DEFAULT_DISPLAY_CONFIG) {
   if (!f.lastName.trim()) return "Le nom est obligatoire."
   if (!f.firstName.trim()) return "Le prénom est obligatoire."
+  if (displayConfig.gender.visible && !f.gender) return 'Le genre est obligatoire.'
   if (displayConfig.dateOfBirth.visible && !f.birthDate) return "La date de naissance est obligatoire."
   if (displayConfig.licence.visible && !f.licenceNumber.trim()) return "Le numéro de licence est obligatoire."
   if (displayConfig.club.visible && !f.club.trim()) return "Le club est obligatoire."
@@ -461,7 +468,7 @@ function AddFencerForm() {
     const err = validateFencer(form, displayConfig)
     if (err) return alert(err)
     await addFencer(tournamentId, contestId, {
-      lastName: form.lastName.trim(), firstName: form.firstName.trim(), gender: form.gender,
+      lastName: form.lastName.trim(), firstName: form.firstName.trim(), gender: form.gender || undefined,
       club: form.club.trim() || undefined, birthDate: form.birthDate || undefined,
       licenceNumber: form.licenceNumber.trim() || undefined,
       initialRank: form.initialRank ? parseInt(form.initialRank) : undefined, present: true,
@@ -477,11 +484,12 @@ function AddFencerForm() {
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <div><label className="label" htmlFor="fencer-add-last-name">Nom *</label><input id="fencer-add-last-name" className="input" value={form.lastName} onChange={e => setForm(f => ({...f, lastName: e.target.value}))} /></div>
         <div><label className="label" htmlFor="fencer-add-first-name">Prénom *</label><input id="fencer-add-first-name" className="input" value={form.firstName} onChange={e => setForm(f => ({...f, firstName: e.target.value}))} /></div>
-        <div><label className="label" htmlFor="fencer-add-gender">Genre</label>
-          <select id="fencer-add-gender" className="input" value={form.gender} onChange={e => setForm(f => ({...f, gender: e.target.value as 'M'|'F'}))}>
-            <option value="M">M</option><option value="F">F</option>
+        {displayConfig.gender.visible && <div><label className="label" htmlFor="fencer-add-gender">Genre *</label>
+          <select id="fencer-add-gender" className="input" value={form.gender} onChange={e => setForm(f => ({...f, gender: e.target.value as typeof EMPTY_FENCER_FORM.gender}))}>
+            <option value="">Selectionner</option>
+            {FENCER_GENDERS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
-        </div>
+        </div>}
         {displayConfig.club.visible && <div><label className="label" htmlFor="fencer-add-club">Club *</label><input id="fencer-add-club" className="input" value={form.club} onChange={e => setForm(f => ({...f, club: e.target.value}))} /></div>}
         {displayConfig.licence.visible && <div><label className="label" htmlFor="fencer-add-licence">N° Licence *</label><input id="fencer-add-licence" className="input" value={form.licenceNumber} onChange={e => setForm(f => ({...f, licenceNumber: e.target.value}))} /></div>}
         {displayConfig.dateOfBirth.visible && <div><label className="label" htmlFor="fencer-add-dob">Date de naissance *</label><input id="fencer-add-dob" type="date" className="input" value={form.birthDate} onChange={e => setForm(f => ({...f, birthDate: e.target.value}))} /></div>}
@@ -525,11 +533,12 @@ function FencerEditRow({ f, displayConfig, form, setForm, onCancel, onSave }: Fe
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div><label className="label" htmlFor="fencer-edit-last-name">Nom *</label><input id="fencer-edit-last-name" className="input" value={form.lastName} onChange={e => setForm(v => ({...v, lastName: e.target.value}))} /></div>
             <div><label className="label" htmlFor="fencer-edit-first-name">Prénom *</label><input id="fencer-edit-first-name" className="input" value={form.firstName} onChange={e => setForm(v => ({...v, firstName: e.target.value}))} /></div>
-            <div><label className="label" htmlFor="fencer-edit-gender">Genre</label>
-              <select id="fencer-edit-gender" className="input" value={form.gender} onChange={e => setForm(v => ({...v, gender: e.target.value as 'M'|'F'}))}>
-                <option value="M">M</option><option value="F">F</option>
+            {displayConfig.gender.visible && <div><label className="label" htmlFor="fencer-edit-gender">Genre *</label>
+              <select id="fencer-edit-gender" className="input" value={form.gender} onChange={e => setForm(v => ({...v, gender: e.target.value as typeof EMPTY_FENCER_FORM.gender}))}>
+                <option value="">Selectionner</option>
+                {FENCER_GENDERS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
-            </div>
+            </div>}
             <div><label className="label" htmlFor="fencer-edit-club">Club {displayConfig.club.visible && '*'}</label><input id="fencer-edit-club" className="input" value={form.club} onChange={e => setForm(v => ({...v, club: e.target.value}))} /></div>
             <div><label className="label" htmlFor="fencer-edit-licence">N° Licence {displayConfig.licence.visible && '*'}</label><input id="fencer-edit-licence" className="input" value={form.licenceNumber} onChange={e => setForm(v => ({...v, licenceNumber: e.target.value}))} /></div>
             <div><label className="label" htmlFor="fencer-edit-dob">Date de naissance {displayConfig.dateOfBirth.visible && '*'}</label><input id="fencer-edit-dob" type="date" className="input" value={form.birthDate} onChange={e => setForm(v => ({...v, birthDate: e.target.value}))} /></div>
@@ -574,14 +583,14 @@ function FencerList({ filter }: Readonly<{ filter: string }>) {
 
   function startEditFencer(f: Fencer) {
     setEditingFencerId(f.id)
-    setEditFencerForm({ lastName: f.lastName, firstName: f.firstName, gender: f.gender, club: f.club ?? '', birthDate: f.birthDate ?? '', licenceNumber: f.licenceNumber ?? '', initialRank: f.initialRank?.toString() ?? '' })
+    setEditFencerForm({ lastName: f.lastName, firstName: f.firstName, gender: f.gender ?? '', club: f.club ?? '', birthDate: f.birthDate ?? '', licenceNumber: f.licenceNumber ?? '', initialRank: f.initialRank?.toString() ?? '' })
   }
   async function handleSaveFencer(e: React.SubmitEvent<HTMLFormElement>, fencer: Fencer) {
     e.preventDefault()
     const err = validateFencer(editFencerForm, displayConfig)
     if (err) return alert(err)
     await updateFencer(tournamentId, contestId, {
-      ...fencer, lastName: editFencerForm.lastName.trim(), firstName: editFencerForm.firstName.trim(), gender: editFencerForm.gender,
+      ...fencer, lastName: editFencerForm.lastName.trim(), firstName: editFencerForm.firstName.trim(), gender: editFencerForm.gender || undefined,
       club: editFencerForm.club.trim() || undefined, birthDate: editFencerForm.birthDate || undefined,
       licenceNumber: editFencerForm.licenceNumber.trim() || undefined,
       initialRank: editFencerForm.initialRank ? parseInt(editFencerForm.initialRank) : undefined,

@@ -69,7 +69,7 @@ export function importTournamentJSON(file: File): Promise<Tournament> {
 /**
  * Parse a FFF file (Engarde semicolon/CSV format) into Fencer[]
  * Line format: NOM,Prenom,DD/MM/YYYY,sex,nation;ligue_or_empty;licence,ligue,club,rank,points;
- * Gender: 'H' or 'M' = male, 'F' or 'D' = female
+ * Gender: 'H' or 'M' = male, 'F' or 'D' = female, 'X' or 'NB' = non-binary
  * Note: some files wrap long lines — join continuation lines first.
  */
 
@@ -113,7 +113,7 @@ function parseFFFLine(line: string): Fencer | null {
     lastName: lastName?.trim() ?? '',
     firstName: firstName?.trim() ?? '',
     birthDate: isoBirthDate,
-    gender: (gender?.trim() === 'F' || gender?.trim() === 'D') ? 'F' : 'M',
+    gender: mapFencerGender(gender),
     club: club?.trim() || undefined,
     country: country?.trim() || undefined,
     licenceNumber: licenceNumber?.trim() || undefined,
@@ -143,7 +143,7 @@ function parseTireurElement(t: Element, isCotcot: boolean): { fencer: Fencer; eq
     lastName: t.getAttribute('Nom') ?? '',
     firstName: t.getAttribute('Prenom') ?? '',
     birthDate: isoBirthDate,
-    gender: (t.getAttribute('Sexe') === 'F' ? 'F' : 'M') as 'M' | 'F',
+    gender: mapFencerGender(t.getAttribute('Sexe')),
     club: t.getAttribute('Club') ?? undefined,
     country: t.getAttribute('Nation') ?? undefined,
     licenceNumber: t.getAttribute('Licence') ?? undefined,
@@ -285,6 +285,15 @@ function mapGender(g: string): import('../types').Gender {
   return 'men'
 }
 
+function mapFencerGender(gender: string | null | undefined): import('../types').FencerGender | undefined {
+  const normalized = gender?.trim().toUpperCase()
+  if (!normalized) return undefined
+  if (normalized === 'F' || normalized === 'D') return 'F'
+  if (normalized === 'X' || normalized === 'NB') return 'X'
+  if (normalized === 'M' || normalized === 'H') return 'M'
+  return undefined
+}
+
 function downloadFile(filename: string, mimeType: string, content: string): void {
   const blob = new Blob([content], { type: mimeType })
   const url = URL.createObjectURL(blob)
@@ -301,7 +310,7 @@ function downloadFile(filename: string, mimeType: string, content: string): void
  * Export a contest's fencer list in FFF (Engarde) format.
  *
  * Line format: NOM,Prenom,DD/MM/YYYY,sex,nation;region,ligue;licence,ligue,club,rank,points;
- * Gender: M → 'M', F → 'F'
+ * Gender: M → 'M', F → 'F', X → 'X', undefined → ''
  */
 export function exportContestFFF(contest: Contest, fencers: Fencer[]): void {
   const now = new Date()
@@ -319,7 +328,7 @@ export function exportContestFFF(contest: Contest, fencers: Fencer[]): void {
           return `${d}/${mo}/${y}`
         })()
       : ''
-    const sex = f.gender === 'F' ? 'F' : 'M'
+    const sex = f.gender ?? ''
     const nation = f.country ?? ''
     const region = ''  // not stored in Fencer
     const ligue = f.league ?? ''

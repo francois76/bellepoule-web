@@ -2,6 +2,7 @@
 
 export type Weapon = 'epee' | 'foil' | 'sabre'
 export type Gender = 'men' | 'women' | 'mixed'
+export type FencerGender = 'M' | 'F' | 'X'
 export type StageType = 'checkin' | 'pool' | 'tableau' | 'classification' | 'barrage'
 export type StageStatus = 'pending' | 'running' | 'done'
 export type MatchResult = 'V' | 'D' | 'A' // Victory, Defeat, Absent
@@ -91,7 +92,7 @@ export interface Fencer {
   firstName: string
   lastName: string
   birthDate?: string // ISO YYYY-MM-DD
-  gender: 'M' | 'F'
+  gender?: FencerGender
   club?: string
   country?: string
   league?: string   // ligue (FFF / cotcot Ligue attribute)
