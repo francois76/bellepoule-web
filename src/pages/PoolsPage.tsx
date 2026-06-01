@@ -507,9 +507,9 @@ export default function PoolsPage() {
                     <th className="px-3 py-2 text-left">Tireur</th>
                     <th className="px-3 py-2 text-center">V</th>
                     <th className="px-3 py-2 text-center">V/M</th>
+                    <th className="px-3 py-2 text-center">Ind.</th>
                     <th className="px-3 py-2 text-center">TD</th>
                     <th className="px-3 py-2 text-center">TR</th>
-                    <th className="px-3 py-2 text-center">Ind.</th>
                     <th className="px-3 py-2 text-center">Statut</th>
                   </tr>
                 </thead>
@@ -520,9 +520,9 @@ export default function PoolsPage() {
                       <td className="px-3 py-2">{participantName(r.fencerId)}</td>
                       <td className="px-3 py-2 text-center">{r.victories}</td>
                       <td className="px-3 py-2 text-center">{r.bouts > 0 ? `${Math.round((r.victories / r.bouts) * 100)}%` : '—'}</td>
+                      <td className="px-3 py-2 text-center font-medium">{r.index > 0 ? `+${r.index}` : r.index}</td>
                       <td className="px-3 py-2 text-center">{r.touchesScored}</td>
                       <td className="px-3 py-2 text-center">{r.touchesReceived}</td>
-                      <td className="px-3 py-2 text-center font-medium">{r.index > 0 ? `+${r.index}` : r.index}</td>
                       <td className="px-3 py-2 text-center">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${r.status === 'qualified' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                           {r.status === 'qualified' ? 'Qualifié' : 'Éliminé'}
@@ -651,9 +651,9 @@ export default function PoolsPage() {
                 <th className="px-3 py-2 text-left">Tireur</th>
                 <th className="px-3 py-2 text-center">V</th>
                 <th className="px-3 py-2 text-center">V/M</th>
+                <th className="px-3 py-2 text-center">Ind.</th>
                 <th className="px-3 py-2 text-center">TD</th>
                 <th className="px-3 py-2 text-center">TR</th>
-                <th className="px-3 py-2 text-center">Ind.</th>
                 <th className="px-3 py-2 text-center">Statut</th>
               </tr>
             </thead>
@@ -664,9 +664,9 @@ export default function PoolsPage() {
                   <td className="px-3 py-2">{participantName(r.fencerId)}</td>
                   <td className="px-3 py-2 text-center">{r.victories}</td>
                   <td className="px-3 py-2 text-center">{r.bouts > 0 ? `${Math.round((r.victories / r.bouts) * 100)}%` : '—'}</td>
+                  <td className="px-3 py-2 text-center font-medium">{r.index > 0 ? `+${r.index}` : r.index}</td>
                   <td className="px-3 py-2 text-center">{r.touchesScored}</td>
                   <td className="px-3 py-2 text-center">{r.touchesReceived}</td>
-                  <td className="px-3 py-2 text-center font-medium">{r.index > 0 ? `+${r.index}` : r.index}</td>
                   <td className="px-3 py-2 text-center">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${r.status === 'qualified' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                       {r.status === 'qualified' ? 'Qualifié' : 'Éliminé'}
