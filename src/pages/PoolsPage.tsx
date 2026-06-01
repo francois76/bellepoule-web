@@ -506,7 +506,7 @@ export default function PoolsPage() {
                     <th className="px-3 py-2 text-left">Rang</th>
                     <th className="px-3 py-2 text-left">Tireur</th>
                     <th className="px-3 py-2 text-center">V</th>
-                    <th className="px-3 py-2 text-center">M</th>
+                    <th className="px-3 py-2 text-center">V/M</th>
                     <th className="px-3 py-2 text-center">TD</th>
                     <th className="px-3 py-2 text-center">TR</th>
                     <th className="px-3 py-2 text-center">Ind.</th>
@@ -519,7 +519,7 @@ export default function PoolsPage() {
                       <td className="px-3 py-2 font-bold text-gray-700">{r.rank}</td>
                       <td className="px-3 py-2">{participantName(r.fencerId)}</td>
                       <td className="px-3 py-2 text-center">{r.victories}</td>
-                      <td className="px-3 py-2 text-center">{r.bouts}</td>
+                      <td className="px-3 py-2 text-center">{r.bouts > 0 ? `${Math.round((r.victories / r.bouts) * 100)}%` : '—'}</td>
                       <td className="px-3 py-2 text-center">{r.touchesScored}</td>
                       <td className="px-3 py-2 text-center">{r.touchesReceived}</td>
                       <td className="px-3 py-2 text-center font-medium">{r.index > 0 ? `+${r.index}` : r.index}</td>
@@ -650,7 +650,7 @@ export default function PoolsPage() {
                 <th className="px-3 py-2 text-left">Rang</th>
                 <th className="px-3 py-2 text-left">Tireur</th>
                 <th className="px-3 py-2 text-center">V</th>
-                <th className="px-3 py-2 text-center">M</th>
+                <th className="px-3 py-2 text-center">V/M</th>
                 <th className="px-3 py-2 text-center">TD</th>
                 <th className="px-3 py-2 text-center">TR</th>
                 <th className="px-3 py-2 text-center">Ind.</th>
@@ -663,7 +663,7 @@ export default function PoolsPage() {
                   <td className="px-3 py-2 font-bold text-gray-700">{r.rank}</td>
                   <td className="px-3 py-2">{participantName(r.fencerId)}</td>
                   <td className="px-3 py-2 text-center">{r.victories}</td>
-                  <td className="px-3 py-2 text-center">{r.bouts}</td>
+                  <td className="px-3 py-2 text-center">{r.bouts > 0 ? `${Math.round((r.victories / r.bouts) * 100)}%` : '—'}</td>
                   <td className="px-3 py-2 text-center">{r.touchesScored}</td>
                   <td className="px-3 py-2 text-center">{r.touchesReceived}</td>
                   <td className="px-3 py-2 text-center font-medium">{r.index > 0 ? `+${r.index}` : r.index}</td>
